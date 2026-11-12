@@ -25,47 +25,54 @@ variable "nick" {
 }
 
 variable "irc_server" {
-  description = "IRC server the bot connects to over TLS and IPv6. It must have an AAAA record: the subnet has no IPv4 path."
+  description = "IRC server the bot connects to over TLS. It must have an AAAA record unless ipv4_enabled is set."
   type = object({
     host = string
     port = optional(number, 6697)
   })
 }
 
-variable "channels" {
-  description = "Channels the bot joins. SiteUp is 1 only while it has ops in every one."
-  type        = list(string)
-
-  validation {
-    condition     = length(var.channels) > 0 && alltrue([for channel in var.channels : can(regex("^#[A-Za-z0-9_.-]+$", channel))])
-    error_message = "channels must list at least one channel, each # followed by letters, digits, dots, hyphens and underscores. Channel names are written into Tcl, so other characters are not accepted."
-  }
-}
-
-variable "ops" {
-  description = "Handle to hostmask patterns (nick!ident@host, with * and ?) of the users the bot ops on join. Use the ident and the VPC's IPv6 /56 of the client that connects, so the mask survives the client's own replacement."
+variable "users" {
+  description = "Handle to hostmask patterns (nick!ident@host, with * and ?) of the people the bot recognises. Use the ident and the VPC's IPv6 /56 of the client that connects, so the mask survives the client's own replacement. A user gets ops only in the channels that list their handle."
   type        = map(list(string))
 
   validation {
-    condition     = alltrue([for handle in keys(var.ops) : can(regex("^[a-z][a-z0-9_-]*$", handle))])
-    error_message = "Each handle in ops must start with a lowercase letter and hold only lowercase letters, digits, hyphens and underscores."
+    condition     = alltrue([for handle in keys(var.users) : can(regex("^[a-z][a-z0-9_-]*$", handle))])
+    error_message = "Each handle in users must start with a lowercase letter and hold only lowercase letters, digits, hyphens and underscores."
   }
 
   validation {
     condition = alltrue([
-      for masks in values(var.ops) : length(masks) > 0 && alltrue([for mask in masks : can(regex("^[^\\s{}\\\\]+![^\\s{}\\\\]+@[^\\s{}\\\\]*[^\\s{}\\\\*?][^\\s{}\\\\]*$", mask))])
+      for masks in values(var.users) : length(masks) > 0 && alltrue([for mask in masks : can(regex("^[^\\s{}\\\\]+![^\\s{}\\\\]+@[^\\s{}\\\\]*[^\\s{}\\\\*?][^\\s{}\\\\]*$", mask))])
     ])
-    error_message = "Each handle in ops needs at least one mask of the form nick!ident@host, with no whitespace, brace or backslash, and a host part with something other than wildcards: a mask is the only proof the bot has that a user may be opped or may mint a status link."
+    error_message = "Each handle in users needs at least one mask of the form nick!ident@host, with no whitespace, brace or backslash, and a host part with something other than wildcards: a mask is the only proof the bot has that a user may be opped or may mint a status link."
+  }
+}
+
+variable "channels" {
+  description = "Channels the bot joins, keyed by name. ops lists the handles in users that the bot ops on join in that channel. SiteUp is 1 only while the bot has ops in every channel."
+  type = map(object({
+    ops = optional(list(string), [])
+  }))
+
+  validation {
+    condition     = length(var.channels) > 0 && alltrue([for channel in keys(var.channels) : can(regex("^#[A-Za-z0-9_.-]+$", channel))])
+    error_message = "channels must list at least one channel, each # followed by letters, digits, dots, hyphens and underscores. Channel names are written into Tcl, so other characters are not accepted."
+  }
+
+  validation {
+    condition     = alltrue([for channel in values(var.channels) : alltrue([for handle in channel.ops : contains(keys(var.users), handle)])])
+    error_message = "Every handle in a channel's ops must be a key of users."
   }
 }
 
 variable "owner" {
-  description = "Handle in ops that may ask the bot for a status page link with /msg <nick> status."
+  description = "Handle in users that may ask the bot for a status page link with /msg <nick> status. The owner needs no ops."
   type        = string
 
   validation {
-    condition     = contains(keys(var.ops), var.owner)
-    error_message = "owner must be a key of ops, because the bot recognises the owner by that handle's hostmasks."
+    condition     = contains(keys(var.users), var.owner)
+    error_message = "owner must be a key of users, because the bot recognises the owner by that handle's hostmasks."
   }
 }
 
@@ -80,6 +87,12 @@ variable "eggdrop" {
     condition     = can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", var.eggdrop.version)) && can(regex("^[0-9a-f]{64}$", var.eggdrop.sha256))
     error_message = "eggdrop.version must be a plain x.y.z release and eggdrop.sha256 must be 64 lowercase hex digits."
   }
+}
+
+variable "ipv4_enabled" {
+  description = "If true instances get a public IPv4 address (about 3.65 USD per month) and may reach IRC servers over IPv4. Leave false for servers with AAAA records."
+  type        = bool
+  default     = false
 }
 
 variable "spot_enabled" {

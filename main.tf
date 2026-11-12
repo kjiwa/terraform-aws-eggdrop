@@ -6,20 +6,21 @@ resource "random_password" "status_key" {
 module "network" {
   source = "./modules/network"
 
-  irc_port = var.irc_server.port
+  irc_port     = var.irc_server.port
+  ipv4_enabled = var.ipv4_enabled
 }
 
 module "compute" {
   source = "./modules/compute"
 
-  subnet_id        = module.network.subnet_id
+  subnet_ids       = module.network.subnet_ids
   app_sg_id        = module.network.app_sg_id
   active           = var.active
   spot_enabled     = var.spot_enabled
   nick             = var.nick
   irc_server       = var.irc_server
   channels         = var.channels
-  ops              = var.ops
+  users            = var.users
   owner            = var.owner
   eggdrop          = var.eggdrop
   domain_name      = var.domain_name

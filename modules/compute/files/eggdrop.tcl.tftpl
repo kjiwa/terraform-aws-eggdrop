@@ -3,6 +3,7 @@
 set eggdrop_region "${region}"
 set eggdrop_namespace "${metric_namespace}"
 set eggdrop_domain "${domain_name}"
+set eggdrop_owner "${owner}"
 set eggdrop_token_ttl 43200
 
 # Answer only the status command: every other built-in /msg command is
@@ -13,18 +14,25 @@ foreach eggdrop_bind [binds msg] {
 }
 unset -nocomplain eggdrop_bind eggdrop_type eggdrop_flags eggdrop_mask eggdrop_hits eggdrop_proc
 
-# handle flags {hostmasks}
+# Users carry no global flags: ops are granted per channel below, and the
+# owner is recognised by handle, so nobody holds +n.
 proc eggdrop_load_users {type} {
-  foreach {handle flags masks} {
-%{ for handle, user in users ~}
-    {${handle}} ${user.flags} {${join(" ", user.masks)}}
+  foreach {handle masks} {
+%{ for handle, masks in users ~}
+    {${handle}} {${join(" ", masks)}}
 %{ endfor ~}
   } {
     adduser $handle [lindex $masks 0]
     foreach mask [lrange $masks 1 end] {
       setuser $handle HOSTS $mask
     }
-    chattr $handle $flags
+  }
+  foreach {handle channel} {
+%{ for grant in channel_ops ~}
+    {${grant.handle}} {${grant.channel}}
+%{ endfor ~}
+  } {
+    chattr $handle |+fao $channel
   }
 }
 bind evnt - userfile-loaded eggdrop_load_users
@@ -63,7 +71,10 @@ proc eggdrop_heartbeat {minute hour day month year} {
 bind time - "* * * * *" eggdrop_heartbeat
 
 proc eggdrop_status {nick uhost handle text} {
-  global eggdrop_domain eggdrop_token_ttl
+  global eggdrop_domain eggdrop_owner eggdrop_token_ttl
+  if {$handle ne $eggdrop_owner} {
+    return 1
+  }
   if {[catch {exec python3 /opt/eggdrop/eggdrop-token /opt/eggdrop/status.key $eggdrop_token_ttl} token]} {
     putserv "NOTICE $nick :could not mint a token"
     return 1
@@ -71,4 +82,4 @@ proc eggdrop_status {nick uhost handle text} {
   putserv "NOTICE $nick :https://$eggdrop_domain/signin#token=$token (valid for 12 hours)"
   return 1
 }
-bind msg n status eggdrop_status
+bind msg - status eggdrop_status

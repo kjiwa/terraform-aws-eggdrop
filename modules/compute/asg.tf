@@ -8,20 +8,26 @@ resource "aws_autoscaling_group" "this" {
   min_size            = var.active ? 1 : 0
   max_size            = var.active ? 1 : 0
   desired_capacity    = var.active ? 1 : 0
-  vpc_zone_identifier = [var.subnet_id]
+  vpc_zone_identifier = var.subnet_ids
   capacity_rebalance  = false
 
   mixed_instances_policy {
     launch_template {
+      # The base specification is required; every override names its own.
       launch_template_specification {
-        launch_template_id = aws_launch_template.this.id
-        version            = aws_launch_template.this.latest_version
+        launch_template_id = aws_launch_template.this["x86_64"].id
+        version            = aws_launch_template.this["x86_64"].latest_version
       }
 
       dynamic "override" {
-        for_each = local.instance_types
+        for_each = local.type_architectures
         content {
-          instance_type = override.value
+          instance_type = override.key
+
+          launch_template_specification {
+            launch_template_id = aws_launch_template.this[override.value].id
+            version            = aws_launch_template.this[override.value].latest_version
+          }
         }
       }
     }

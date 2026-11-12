@@ -50,6 +50,17 @@ resource "aws_vpc_security_group_egress_rule" "app_irc_ipv6" {
   cidr_ipv6         = "::/0"
 }
 
+# The AWS APIs stay on IPv6 (above); only IRC needs the IPv4 path.
+resource "aws_vpc_security_group_egress_rule" "app_irc_ipv4" {
+  count             = var.ipv4_enabled ? 1 : 0
+  security_group_id = aws_security_group.app.id
+  description       = "IRC over TLS over IPv4."
+  ip_protocol       = "tcp"
+  from_port         = var.irc_port
+  to_port           = var.irc_port
+  cidr_ipv4         = "0.0.0.0/0"
+}
+
 resource "aws_security_group" "eice" {
   name        = "eggdrop-eice"
   description = "EC2 Instance Connect Endpoint."

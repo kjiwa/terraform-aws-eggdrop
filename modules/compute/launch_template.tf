@@ -1,6 +1,14 @@
+moved {
+  from = aws_launch_template.this
+  to   = aws_launch_template.this["x86_64"]
+}
+
+# One template per architecture: the image is the only difference.
 resource "aws_launch_template" "this" {
-  name_prefix   = "${local.name}-"
-  image_id      = data.aws_ssm_parameter.al2023.value
+  for_each = local.architectures
+
+  name_prefix   = "${local.name}-${each.key}-"
+  image_id      = data.aws_ssm_parameter.al2023[each.key].value
   ebs_optimized = true
 
   iam_instance_profile {

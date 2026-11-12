@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.2.0
+
+### Changed
+
+- Breaking: `ops` is now `users` (handle to hostmasks), and `channels` is a map from channel name to `{ ops = [handles] }`. A user is opped only in the channels that list them, through channel flags. Migrate `ops = { alice = [...] }` with `channels = ["#a", "#b"]` to `users = { alice = [...] }` with `channels = { "#a" = { ops = ["alice"] }, "#b" = { ops = ["alice"] } }`.
+- The `status` command is gated by the `owner` handle instead of the `+n` flag, so no user holds global flags and the owner gets no ops unless a channel lists them.
+- The network module creates a subnet in every availability zone and drops its `az` input, and the ASG draws Spot capacity from every zone. Applying replaces the v0.1.0 subnet and the instance connect endpoint, and the ASG replaces the instance.
+- The ASG draws from `t3a.nano`, `t3.nano`, `t3a.micro`, `t3.micro`, `t4g.nano` and `t4g.micro`, with a launch template and AL2023 image for each architecture.
+
+### Added
+
+- `ipv4_enabled` (default `false`): an internet gateway, a default IPv4 route, a public address and IRC-port egress over IPv4, for servers with no AAAA record.
+
 ## v0.1.0
 
 ### Added
