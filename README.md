@@ -73,6 +73,8 @@ The bot's address changes with every replacement, but a client's does not leave 
 3. Op the bot once from a client that has ops. A bot that rejoins an occupied channel is not opped until someone ops it.
 4. Message the bot `status` from a client whose hostmask matches `owner`. It replies with a link that signs you in for 12 hours.
 
+To upgrade from v0.1.0, apply with `active = false` first, then apply the new version with `active = true`: the subnets are replaced, which cannot happen while an instance is running in the old one.
+
 To roll out a new Eggdrop version, upload the new tarball, then change `eggdrop`. Any change to the rendered config replaces the instance the same way. `terraform output asg_name` names the group for a manual `aws autoscaling start-instance-refresh`.
 
 ## Availability

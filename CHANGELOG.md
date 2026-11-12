@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Upgrading from v0.1.0: set `active = false` and apply, then upgrade and set it back. A direct upgrade deadlocks: the old subnet cannot be deleted while the instance holds an interface in it, and the instance replacement starts without a route.
+
 ## v0.2.0
 
 ### Changed
