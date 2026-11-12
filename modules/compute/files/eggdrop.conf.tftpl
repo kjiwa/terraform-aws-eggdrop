@@ -1,0 +1,38 @@
+# Rendered by Terraform; the instance fetches it at boot. The userfile and
+# channel list are rebuilt from naju.tcl on every start.
+
+loadmodule pbkdf2
+loadmodule channels
+loadmodule server
+loadmodule ctcp
+loadmodule irc
+
+set nick "${nick}"
+set altnick "${nick}?"
+set realname "${nick}"
+set username "${nick}"
+set admin "${nick}"
+set network "EFnet"
+set net-type "EFnet"
+
+# The subnet has no IPv4 path to the internet.
+set prefer-ipv6 1
+server add ${irc_server.host} +${irc_server.port}
+
+set userfile "naju.user"
+set chanfile "naju.chan"
+set help-path "help/"
+set mod-path "modules/"
+set ssl-capath "/etc/ssl/"
+set quiet-save 1
+set ctcp-mode 0
+
+logfile mco * "logs/eggdrop.log"
+
+bind evnt - init-server naju_init_server
+proc naju_init_server {type} {
+  global botnick
+  putquick "MODE $botnick +i"
+}
+
+source scripts/naju.tcl

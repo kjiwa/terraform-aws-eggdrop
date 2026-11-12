@@ -1,0 +1,174 @@
+#!/bin/sh
+# Boot glue: swap, unattended security updates, then compile the pinned Eggdrop
+# release from the bot bucket and start it. The readonly assignments below are
+# Terraform templatefile() substitutions baked in at plan time; the rest is
+# plain POSIX sh.
+set -eu
+
+readonly REGION="${region}"
+readonly BUCKET="${bucket}"
+readonly EGGDROP_VERSION="${eggdrop_version}"
+readonly EGGDROP_SHA256="${eggdrop_sha256}"
+# Changes whenever the rendered config does, so the ASG replaces the instance.
+readonly CONFIG_HASH="${config_hash}"
+
+readonly HOME_DIR="/opt/eggdrop"
+readonly BUILD_DIR="/var/tmp/eggdrop-build"
+readonly TARBALL_KEY="eggdrop/eggdrop-$EGGDROP_VERSION.tar.gz"
+readonly TARBALL_WAIT_SECONDS=15
+readonly TARBALL_WAIT_TRIES=120
+
+# The dual-stack endpoints are reachable over IPv6; the IPv4-only defaults are
+# not. Every aws call here and in the eggdrop unit needs this.
+export AWS_USE_DUALSTACK_ENDPOINT=true
+export AWS_DEFAULT_REGION="$REGION"
+
+log() {
+  echo "[user-data] $*" | tee -a /var/log/user-data.log >&2
+}
+
+# Boot runs once and nothing re-runs it, so a transient dnf or S3 failure
+# would leave a healthy-looking instance with no bot.
+retry() {
+  _retry_tries=1
+  until "$@"; do
+    if [ "$_retry_tries" -ge 3 ]; then
+      return 1
+    fi
+    _retry_tries=$((_retry_tries + 1))
+    sleep 10
+  done
+}
+
+enable_swap() {
+  log "Creating 1G swap for the compile..."
+  dd if=/dev/zero of=/swapfile bs=1M count=1024
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+}
+
+enable_security_updates() {
+  log "Installing dnf-automatic..."
+  if retry dnf install -y dnf-automatic; then
+    sed -i 's/^upgrade_type = .*/upgrade_type = security/' /etc/dnf/automatic.conf
+    sed -i 's/^apply_updates = .*/apply_updates = yes/' /etc/dnf/automatic.conf
+    systemctl enable --now dnf-automatic.timer
+  else
+    log "dnf-automatic install failed; continuing without unattended security updates"
+  fi
+}
+
+install_build_tools() {
+  log "Installing build tools..."
+  retry dnf install -y gcc make tcl-devel openssl-devel
+}
+
+fetch_tarball() {
+  log "Waiting for s3://$BUCKET/$TARBALL_KEY (scripts/upload.sh)..."
+  _fetch_tries=0
+  until aws s3api head-object --bucket "$BUCKET" --key "$TARBALL_KEY" >/dev/null 2>&1; do
+    _fetch_tries=$((_fetch_tries + 1))
+    if [ "$_fetch_tries" -ge "$TARBALL_WAIT_TRIES" ]; then
+      log "Tarball never appeared; giving up"
+      exit 1
+    fi
+    sleep "$TARBALL_WAIT_SECONDS"
+  done
+  mkdir -p "$BUILD_DIR"
+  retry aws s3 cp "s3://$BUCKET/$TARBALL_KEY" "$BUILD_DIR/eggdrop.tar.gz"
+  echo "$EGGDROP_SHA256  $BUILD_DIR/eggdrop.tar.gz" | sha256sum -c -
+}
+
+build_eggdrop() {
+  log "Compiling Eggdrop $EGGDROP_VERSION..."
+  id eggdrop >/dev/null 2>&1 || useradd --system --home-dir "$HOME_DIR" --no-create-home eggdrop
+  mkdir -p "$HOME_DIR"
+  chown eggdrop "$HOME_DIR" "$BUILD_DIR"
+  (
+    cd "$BUILD_DIR"
+    runuser -u eggdrop -- tar xzf eggdrop.tar.gz
+    cd "eggdrop-$EGGDROP_VERSION"
+    runuser -u eggdrop -- ./configure
+    runuser -u eggdrop -- make config
+    runuser -u eggdrop -- make
+    runuser -u eggdrop -- make install DEST="$HOME_DIR"
+  )
+}
+
+fetch_config() {
+  log "Fetching config..."
+  retry aws s3 cp "s3://$BUCKET/config/eggdrop.conf" "$HOME_DIR/naju.conf"
+  retry aws s3 cp "s3://$BUCKET/config/naju.tcl" "$HOME_DIR/scripts/naju.tcl"
+  retry aws s3 cp "s3://$BUCKET/config/naju-token" "$HOME_DIR/naju-token"
+  retry aws s3 cp "s3://$BUCKET/secret/status.key" "$HOME_DIR/status.key"
+  retry aws s3 cp "s3://$BUCKET/config/eggdrop-spot-drain" /usr/local/bin/eggdrop-spot-drain
+  chmod 0755 /usr/local/bin/eggdrop-spot-drain
+  chmod 0600 "$HOME_DIR/status.key"
+  chown -R eggdrop "$HOME_DIR"
+}
+
+write_units() {
+  # The bot's userfile and channel file are rebuilt from naju.tcl on every
+  # start, so a restart never carries stale users. Eggdrop accepts an empty
+  # userfile that begins with its #4v marker and checks nothing else.
+  cat >"$HOME_DIR/prestart.sh" <<'PRESTART'
+#!/bin/sh
+set -eu
+rm -f naju.user naju.chan
+printf '#4v: eggdrop -- naju -- written Thu Jan  1 00:00:00 1970\n' >naju.user
+PRESTART
+  chmod 0755 "$HOME_DIR/prestart.sh"
+
+  cat >/etc/systemd/system/eggdrop.service <<UNIT
+[Unit]
+Description=Eggdrop IRC bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=eggdrop
+WorkingDirectory=$HOME_DIR
+Environment=AWS_USE_DUALSTACK_ENDPOINT=true
+Environment=AWS_DEFAULT_REGION=$REGION
+Environment=HOME=$HOME_DIR
+ExecStartPre=$HOME_DIR/prestart.sh
+ExecStart=$HOME_DIR/eggdrop -n naju.conf
+Restart=always
+RestartSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+  cat >/etc/systemd/system/eggdrop-spot-drain.service <<'UNIT'
+[Unit]
+Description=Stop eggdrop on a Spot interruption notice
+
+[Service]
+ExecStart=/usr/local/bin/eggdrop-spot-drain
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+}
+
+main() {
+  log "Config $CONFIG_HASH"
+  enable_swap
+  enable_security_updates
+  install_build_tools
+  fetch_tarball
+  build_eggdrop
+  fetch_config
+  write_units
+  systemctl daemon-reload
+  systemctl enable --now eggdrop.service eggdrop-spot-drain.service
+  log "Done."
+}
+
+main "$@"

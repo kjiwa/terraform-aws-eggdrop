@@ -1,0 +1,35 @@
+var SIGNIN_HTML = ${jsonencode(signin_html)};
+var SIGNIN_CSP = ${jsonencode(signin_csp)};
+
+function page(status, description, body, extra) {
+  var headers = {
+    'content-type': { value: 'text/html; charset=utf-8' },
+    'cache-control': { value: 'no-store' },
+    'referrer-policy': { value: 'no-referrer' },
+    'x-content-type-options': { value: 'nosniff' }
+  };
+  for (var name in extra) {
+    headers[name] = { value: extra[name] };
+  }
+  return {
+    statusCode: status,
+    statusDescription: description,
+    headers: headers,
+    body: { encoding: 'text', data: body }
+  };
+}
+
+function handler(event) {
+  var uri = event.request.uri;
+  if (uri === '/') {
+    return {
+      statusCode: 302,
+      statusDescription: 'Found',
+      headers: { location: { value: '/status' }, 'cache-control': { value: 'no-store' } }
+    };
+  }
+  if (uri === '/signin') {
+    return page(200, 'OK', SIGNIN_HTML, { 'content-security-policy': SIGNIN_CSP });
+  }
+  return page(404, 'Not Found', 'Not found', {});
+}
