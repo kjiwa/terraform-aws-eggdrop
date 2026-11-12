@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.2
+
+### Changed
+
+- Every outage counts toward the status page's uptime, including instance refreshes and other deliberate replacements: any replacement drops the bot's ops until someone re-ops it. Status page modules at v0.6.0.
+
 ## v0.2.1
 
 ### Changed

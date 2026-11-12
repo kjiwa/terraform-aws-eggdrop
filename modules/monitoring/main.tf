@@ -1,7 +1,8 @@
 # canary_enabled is false: the bot publishes SiteUp itself every minute, and
-# the alarm reads silence as down.
+# the alarm reads silence as down. planned_causes is empty: a replacement of
+# any kind drops the bot's ops until someone re-ops it, so it is an outage.
 module "availability" {
-  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/availability?ref=v0.5.0"
+  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/availability?ref=v0.6.0"
 
   name_prefix      = "eggdrop"
   metric_namespace = var.metric_namespace
@@ -10,12 +11,13 @@ module "availability" {
   alert_email      = var.alert_email
   active           = var.active
   canary_enabled   = false
+  planned_causes   = []
 
   alarm_publishers = module.host_alarms.alarm_names
 }
 
 module "host_alarms" {
-  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/host-alarms?ref=v0.5.0"
+  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/host-alarms?ref=v0.6.0"
 
   name_prefix                       = "eggdrop"
   metric_namespace                  = var.metric_namespace
