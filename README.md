@@ -51,6 +51,7 @@ See `examples/minimal`. Pin a literal `?ref=vX.Y.Z`; before 1.0 a minor release 
 | `owner` | The handle in `users` that may request a status page link. It gets no ops unless a channel lists it. |
 | `eggdrop` | `{ version, sha256 }` of the release to compile. |
 | `nick`, `spot_enabled`, `active` | Optional: bot nick (`eggdrop`), Spot or On-Demand (`true`), sleep switch (`true`). |
+| `image_ids` | Optional, `null`. `{ arm64, x86_64 }` AMI IDs of an Amazon Linux 2023 release to launch. Null tracks the latest, so each AWS release replaces the instance on the next apply. A pinned image that is stale warns on every plan. |
 | `ipv4_enabled` | Optional, `false`. Gives the instance a public IPv4 address, about 3.65 USD a month, and opens the IRC port over IPv4, for servers with no AAAA record. |
 
 ### Masks
@@ -75,11 +76,13 @@ The bot's address changes with every replacement, but a client's does not leave 
 
 To upgrade from v0.1.0, apply with `active = false` first, then apply the new version with `active = true`: the subnets are replaced, which cannot happen while an instance is running in the old one.
 
-To roll out a new Eggdrop version, upload the new tarball, then change `eggdrop`. Any change to the rendered config replaces the instance the same way. `terraform output asg_name` names the group for a manual `aws autoscaling start-instance-refresh`.
+To roll out a new Eggdrop version, upload the new tarball, then change `eggdrop`. Changes to `channels`, `users` and `owner` do not replace the instance: the bot checks the bucket every minute and, when the roster differs, reloads in place without leaving IRC. A channel removed from `channels` is dropped from the bot's list but not necessarily parted. Any other change to the rendered config, to `nick`, `irc_server` or `image_ids`, or a new status key replaces the instance; `terraform output asg_name` names the group for a manual `aws autoscaling start-instance-refresh`.
+
+To update a pinned image, read the latest IDs with `aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-<arch>`, where `<arch>` is `arm64` or `x86_64`, and set `image_ids`. AWS announces releases on an SNS topic in us-east-1 that takes email subscriptions (AL2023 user guide, "Receive update notifications"). IDs are per region. `dnf-automatic` applies security updates to a running instance, so a pin ages gracefully, but a stale one still warns.
 
 ## Availability
 
-The bot publishes the `SiteUp` metric every minute: 1 while it holds ops in every channel, 0 while connected without them. A down bot publishes nothing, so the status page's schedule writes a 0 for each minute the bot missed, and the alarm fires on any one bad minute of the last three. DOWN and RECOVERED emails, the episode record and the Spot capture of the status page all work from that one metric. Any replacement, deliberate or not, counts as an outage in the uptime figures, because the new bot has no ops until someone re-ops it.
+The bot publishes the `SiteUp` metric every minute: 1 while it is connected to the IRC server, whether or not it holds ops. A down bot publishes nothing, so the status page's schedule writes a 0 for each minute the bot missed, and the alarm fires on any one bad minute of the last three. DOWN and RECOVERED emails, the episode record and the Spot capture of the status page all work from that one metric. Any replacement, deliberate or not, counts as an outage in the uptime figures, because the bot is off IRC until the replacement connects, and it has no ops until someone re-ops it.
 
 The status page gate verifies the token in a Lambda with a key in SSM, so it works while the bot is down.
 
@@ -101,6 +104,6 @@ Unit tests cannot start a bot. Before a release, build Eggdrop on Amazon Linux 2
 
 ## Limits
 
-- One bot, one instance, in whichever zone has Spot capacity. Any replacement, whether a Spot reclaim or a config change, takes minutes and the bot is off IRC for that time: the compile is the longest step.
+- One bot, one instance, in whichever zone has Spot capacity. Any replacement, whether a Spot reclaim or a boot change, takes minutes and the bot is off IRC for that time: the compile is the longest step.
 - Nick collisions after a replacement: the old nick lingers on the server until it times out. The bot takes its alternate nick and reclaims the primary.
 - The status page lists only what the status-page core can see from AWS. The bot reports no host metrics.
