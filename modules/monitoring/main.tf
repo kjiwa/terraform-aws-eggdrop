@@ -1,6 +1,6 @@
 # canary_enabled is false: the bot publishes SiteUp itself every minute, and
 # the alarm reads silence as down. planned_causes is empty: a replacement of
-# any kind drops the bot's ops until someone re-ops it, so it is an outage.
+# any kind disconnects the bot from IRC, so it is an outage.
 module "availability" {
   source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/availability?ref=v0.7.0"
 

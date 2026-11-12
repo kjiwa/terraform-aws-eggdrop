@@ -44,20 +44,11 @@ channel add ${channel} {
 channel set ${channel} +protectops
 %{ endfor ~}
 
-# SiteUp is 1 only while the bot has ops in every channel. A bot that is up
-# but not opped publishes 0; a bot that is down publishes nothing, which the
-# alarm reads as down too.
+# SiteUp is 1 while the bot is registered with the IRC server. server-online
+# holds the time of the server's welcome, and 0 while disconnected; a bot that
+# is down publishes nothing, which the alarm reads as down too.
 proc eggdrop_up {} {
-  set channels [channels]
-  if {![llength $channels]} {
-    return 0
-  }
-  foreach channel $channels {
-    if {![botonchan $channel] || ![botisop $channel]} {
-      return 0
-    }
-  }
-  return 1
+  return [expr {[set ::server-online] > 0}]
 }
 
 proc eggdrop_heartbeat {minute hour day month year} {

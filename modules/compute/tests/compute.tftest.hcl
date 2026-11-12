@@ -189,6 +189,15 @@ run "rendered_config" {
   }
 }
 
+run "site_up_means_connected" {
+  command = plan
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "[set ::server-online]") && !strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "botisop")
+    error_message = "SiteUp must follow the server connection, not channel ops."
+  }
+}
+
 run "bot_bucket_is_private" {
   command = plan
 
