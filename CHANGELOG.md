@@ -1,9 +1,10 @@
 # Changelog
 
-## Unreleased
+## v0.2.1
 
 ### Changed
 
+- Status page modules at v0.5.0: an outage with no heartbeat is recorded for its whole length, the RECOVERED email without a recorded outage no longer claims a sleep, and the Storage card and machine image omit rows with no value.
 - Upgrading from v0.1.0: set `active = false` and apply, then upgrade and set it back. A direct upgrade deadlocks: the old subnet cannot be deleted while the instance holds an interface in it, and the instance replacement starts without a route.
 
 ## v0.2.0
