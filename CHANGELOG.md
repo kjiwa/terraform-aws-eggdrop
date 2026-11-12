@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.3
+
+### Changed
+
+- Any bad minute of the last three raises the DOWN alarm, so a short disconnect is no longer missed. A minute the bot missed is recorded as a 0 (status page modules at v0.7.0).
+
+### Upgrade
+
+- Applying replaces the status page's schedule rule and Lambda permission; nothing else changes.
+
 ## v0.2.2
 
 ### Changed

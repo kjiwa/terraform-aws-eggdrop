@@ -79,7 +79,7 @@ To roll out a new Eggdrop version, upload the new tarball, then change `eggdrop`
 
 ## Availability
 
-The bot publishes the `SiteUp` metric every minute: 1 while it holds ops in every channel, 0 while connected without them. A down bot publishes nothing, and the alarm treats missing data as down. DOWN and RECOVERED emails, the episode record and the Spot capture of the status page all work from that one metric. Any replacement, deliberate or not, counts as an outage in the uptime figures, because the new bot has no ops until someone re-ops it.
+The bot publishes the `SiteUp` metric every minute: 1 while it holds ops in every channel, 0 while connected without them. A down bot publishes nothing, so the status page's schedule writes a 0 for each minute the bot missed, and the alarm fires on any one bad minute of the last three. DOWN and RECOVERED emails, the episode record and the Spot capture of the status page all work from that one metric. Any replacement, deliberate or not, counts as an outage in the uptime figures, because the new bot has no ops until someone re-ops it.
 
 The status page gate verifies the token in a Lambda with a key in SSM, so it works while the bot is down.
 
