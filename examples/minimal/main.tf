@@ -14,8 +14,8 @@ module "eggdrop" {
   alert_email = var.alert_email
 
   irc_server = { host = "irc.example.net" }
-  channels   = ["#example"]
-  ops        = { alice = ["*!*alice@2001:db8:1:2??:*"] }
+  channels   = { "#example" = { ops = ["alice"] } }
+  users      = { alice = ["*!*alice@2001:db8:1:2??:*"] }
   owner      = "alice"
 
   # sha256 of eggdrop-<version>.tar.gz; upload it with scripts/upload.sh.

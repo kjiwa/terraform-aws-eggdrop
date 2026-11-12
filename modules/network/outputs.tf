@@ -1,6 +1,6 @@
-output "subnet_id" {
-  description = "Subnet ID the ASG launches into."
-  value       = aws_subnet.this.id
+output "subnet_ids" {
+  description = "One subnet ID per availability zone, for the ASG to launch into."
+  value       = [for az in local.azs : aws_subnet.this[az].id]
 }
 
 output "app_sg_id" {

@@ -3,15 +3,26 @@ data "aws_region" "current" {}
 locals {
   name = "eggdrop"
 
-  # Spot capacity decorrelated from The Lounge's t4g.nano by architecture and family.
-  instance_types = ["t3a.nano", "t3.nano"]
-
-  users = {
-    for handle, masks in var.ops : handle => {
-      flags = handle == var.owner ? "+nafo" : "+afo"
-      masks = masks
-    }
+  # Burstable nano and micro types only: the bot needs megabytes, and any
+  # larger family costs many times a nano. The ASG draws from every type in
+  # every zone, each type with its architecture's image.
+  instance_types = {
+    x86_64 = ["t3a.nano", "t3.nano", "t3a.micro", "t3.micro"]
+    arm64  = ["t4g.nano", "t4g.micro"]
   }
+  architectures = toset(keys(local.instance_types))
+
+  type_architectures = merge([
+    for architecture, types in local.instance_types : {
+      for type in types : type => architecture
+    }
+  ]...)
+
+  channel_ops = flatten([
+    for channel, settings in var.channels : [
+      for handle in settings.ops : { channel = channel, handle = handle }
+    ]
+  ])
 
   config_files = {
     "config/eggdrop.conf" = templatefile("${path.module}/files/eggdrop.conf.tftpl", {
@@ -22,8 +33,10 @@ locals {
       region           = data.aws_region.current.region
       metric_namespace = var.metric_namespace
       domain_name      = var.domain_name
-      channels         = var.channels
-      users            = local.users
+      channels         = sort(keys(var.channels))
+      channel_ops      = local.channel_ops
+      users            = var.users
+      owner            = var.owner
     })
     "config/eggdrop-token"      = file("${path.module}/files/eggdrop-token.py")
     "config/eggdrop-spot-drain" = file("${path.module}/files/spot-drain.sh")

@@ -44,8 +44,8 @@ variables {
   zone_id     = "Z0000000000000TEST"
   alert_email = "ops@example.com"
   irc_server  = { host = "irc.example.net" }
-  channels    = ["#example"]
-  ops         = { alice = ["*!*alice@2001:db8:1:2??:*"] }
+  channels    = { "#example" = { ops = ["alice"] } }
+  users       = { alice = ["*!*alice@2001:db8:1:2??:*"] }
   owner       = "alice"
   eggdrop     = { version = "1.10.2", sha256 = "d6646b630879e1acd9b053ffa12f46667f907145f29af1df0f82749ef3032a94" }
 }
@@ -68,7 +68,7 @@ run "defaults_plan_with_the_required_inputs" {
   }
 }
 
-run "owner_must_be_an_op" {
+run "owner_must_be_a_user" {
   command = plan
   providers = {
     aws           = aws
@@ -88,7 +88,7 @@ run "channels_must_not_be_empty" {
     aws.us_east_1 = aws.us_east_1
   }
   variables {
-    channels = []
+    channels = {}
   }
 
   expect_failures = [var.channels]
@@ -101,10 +101,10 @@ run "mask_cannot_carry_tcl_metacharacters" {
     aws.us_east_1 = aws.us_east_1
   }
   variables {
-    ops = { alice = ["*!*alice@host} ; die {"] }
+    users = { alice = ["*!*alice@host} ; die {"] }
   }
 
-  expect_failures = [var.ops]
+  expect_failures = [var.users]
 }
 
 run "release_hash_must_be_hex" {
@@ -127,10 +127,10 @@ run "mask_cannot_be_all_wildcards" {
     aws.us_east_1 = aws.us_east_1
   }
   variables {
-    ops = { alice = ["*!*@*"] }
+    users = { alice = ["*!*@*"] }
   }
 
-  expect_failures = [var.ops]
+  expect_failures = [var.users]
 }
 
 run "nick_cannot_carry_tcl_substitution" {
@@ -153,8 +153,37 @@ run "channel_cannot_carry_tcl_substitution" {
     aws.us_east_1 = aws.us_east_1
   }
   variables {
-    channels = ["#a[b]"]
+    channels = { "#a[b]" = {} }
   }
 
   expect_failures = [var.channels]
+}
+
+run "channel_ops_must_be_users" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    channels = { "#example" = { ops = ["mallory"] } }
+  }
+
+  expect_failures = [var.channels]
+}
+
+run "channel_ops_may_be_omitted" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    channels = { "#example" = {} }
+  }
+
+  assert {
+    condition     = output.asg_name == "eggdrop"
+    error_message = "A channel with no ops entry must plan: the bot holds the channel and ops nobody."
+  }
 }

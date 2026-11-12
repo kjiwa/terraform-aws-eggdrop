@@ -1,6 +1,6 @@
-variable "subnet_id" {
-  description = "Subnet the ASG launches into."
-  type        = string
+variable "subnet_ids" {
+  description = "Subnets the ASG launches into, one per availability zone."
+  type        = list(string)
 }
 
 variable "app_sg_id" {
@@ -32,17 +32,19 @@ variable "irc_server" {
 }
 
 variable "channels" {
-  description = "Channels the bot joins. SiteUp is 1 only while the bot has ops in every one."
-  type        = list(string)
+  description = "Channels the bot joins, keyed by name. ops lists the handles in users that the bot ops on join in that channel. SiteUp is 1 only while the bot has ops in every one."
+  type = map(object({
+    ops = list(string)
+  }))
 }
 
-variable "ops" {
-  description = "Handle to hostmasks (nick!ident@host patterns) of users the bot ops on join."
+variable "users" {
+  description = "Handle to hostmasks (nick!ident@host patterns) of the people the bot recognises."
   type        = map(list(string))
 }
 
 variable "owner" {
-  description = "Handle in ops that may ask the bot for a status page link."
+  description = "Handle in users that may ask the bot for a status page link."
   type        = string
 }
 
