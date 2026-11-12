@@ -2,7 +2,7 @@
 # the alarm reads silence as down. planned_causes is empty: a replacement of
 # any kind drops the bot's ops until someone re-ops it, so it is an outage.
 module "availability" {
-  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/availability?ref=v0.6.0"
+  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/availability?ref=v0.7.0"
 
   name_prefix      = "eggdrop"
   metric_namespace = var.metric_namespace
@@ -13,11 +13,15 @@ module "availability" {
   canary_enabled   = false
   planned_causes   = []
 
+  # Any bad minute alarms: eggdrop's server-cycle-wait is 60 s, so every
+  # disconnect spans at least one heartbeat.
+  site_down_alarm = { datapoints_to_alarm = 1 }
+
   alarm_publishers = module.host_alarms.alarm_names
 }
 
 module "host_alarms" {
-  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/host-alarms?ref=v0.6.0"
+  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/host-alarms?ref=v0.7.0"
 
   name_prefix                       = "eggdrop"
   metric_namespace                  = var.metric_namespace
