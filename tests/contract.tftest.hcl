@@ -9,7 +9,7 @@ mock_provider "aws" {
     defaults = { names = ["us-west-2a", "us-west-2b"] }
   }
   mock_data "aws_ssm_parameter" {
-    defaults = { value = "ami-0123456789abcdef0" }
+    defaults = { value = "ami-0123456789abcdef0", insecure_value = "ami-0123456789abcdef0" }
   }
   mock_data "aws_iam_policy_document" {
     defaults = { json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}" }
@@ -105,6 +105,19 @@ run "mask_cannot_carry_tcl_metacharacters" {
   }
 
   expect_failures = [var.users]
+}
+
+run "pin_must_name_both_architectures" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    image_ids = { x86_64 = "ami-0bbbbbbbbbbbbbbbb" }
+  }
+
+  expect_failures = [var.image_ids]
 }
 
 run "release_hash_must_be_hex" {

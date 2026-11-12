@@ -9,7 +9,8 @@ readonly REGION="${region}"
 readonly BUCKET="${bucket}"
 readonly EGGDROP_VERSION="${eggdrop_version}"
 readonly EGGDROP_SHA256="${eggdrop_sha256}"
-# Changes whenever the rendered config does, so the ASG replaces the instance.
+# Changes whenever a boot file does, so the ASG replaces the instance. The
+# roster (eggdrop.tcl) is excluded: eggdrop-config-sync applies it in place.
 readonly CONFIG_HASH="${config_hash}"
 
 readonly HOME_DIR="/opt/eggdrop"
@@ -103,7 +104,8 @@ fetch_config() {
   retry aws s3 cp "s3://$BUCKET/config/eggdrop-token" "$HOME_DIR/eggdrop-token"
   retry aws s3 cp "s3://$BUCKET/secret/status.key" "$HOME_DIR/status.key"
   retry aws s3 cp "s3://$BUCKET/config/eggdrop-spot-drain" /usr/local/bin/eggdrop-spot-drain
-  chmod 0755 /usr/local/bin/eggdrop-spot-drain
+  retry aws s3 cp "s3://$BUCKET/config/eggdrop-config-sync" /usr/local/bin/eggdrop-config-sync
+  chmod 0755 /usr/local/bin/eggdrop-spot-drain /usr/local/bin/eggdrop-config-sync
   chmod 0600 "$HOME_DIR/status.key"
   chown -R eggdrop "$HOME_DIR"
 }
@@ -134,6 +136,7 @@ Environment=AWS_DEFAULT_REGION=$REGION
 Environment=HOME=$HOME_DIR
 ExecStartPre=$HOME_DIR/prestart.sh
 ExecStart=$HOME_DIR/eggdrop -n eggdrop.conf
+ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
 RestartSec=15
 NoNewPrivileges=true
@@ -143,6 +146,30 @@ ProtectHome=true
 
 [Install]
 WantedBy=multi-user.target
+UNIT
+
+  cat >/etc/systemd/system/eggdrop-config-sync.service <<UNIT
+[Unit]
+Description=Apply roster changes from the bot bucket
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=AWS_USE_DUALSTACK_ENDPOINT=true
+Environment=AWS_DEFAULT_REGION=$REGION
+ExecStart=/usr/local/bin/eggdrop-config-sync $BUCKET
+UNIT
+
+  cat >/etc/systemd/system/eggdrop-config-sync.timer <<'UNIT'
+[Unit]
+Description=Poll the bot bucket for roster changes
+
+[Timer]
+OnActiveSec=1min
+OnUnitActiveSec=1min
+
+[Install]
+WantedBy=timers.target
 UNIT
 
   cat >/etc/systemd/system/eggdrop-spot-drain.service <<'UNIT'
@@ -167,7 +194,7 @@ main() {
   fetch_config
   write_units
   systemctl daemon-reload
-  systemctl enable --now eggdrop.service eggdrop-spot-drain.service
+  systemctl enable --now eggdrop.service eggdrop-spot-drain.service eggdrop-config-sync.timer
   log "Done."
 }
 

@@ -23,6 +23,7 @@ module "compute" {
   users            = var.users
   owner            = var.owner
   eggdrop          = var.eggdrop
+  image_ids        = var.image_ids
   domain_name      = var.domain_name
   metric_namespace = local.metric_namespace
   status_key       = random_password.status_key.result

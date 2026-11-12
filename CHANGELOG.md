@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.3.0
+
+### Changed
+
+- `SiteUp` is 1 while the bot is connected to the IRC server, whether or not it holds ops. Before, a channel where the bot lacked ops counted as down.
+- Changes to `channels`, `users` and `owner` apply in place. The instance polls the bot bucket every minute and reloads Eggdrop when the roster differs; the launch template no longer changes, so there is no instance refresh. Status page modules at v0.7.1.
+
+### Added
+
+- `image_ids`: pin the Amazon Linux 2023 image per architecture. A stale pin warns on every plan.
+
+### Upgrade
+
+- Applying replaces the instance once: the launch template gains the sync script and units. A pin set at the same time adds nothing further.
+
 ## v0.2.3
 
 ### Changed

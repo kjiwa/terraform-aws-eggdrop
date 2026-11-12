@@ -15,8 +15,13 @@ foreach eggdrop_bind [binds msg] {
 unset -nocomplain eggdrop_bind eggdrop_type eggdrop_flags eggdrop_mask eggdrop_hits eggdrop_proc
 
 # Users carry no global flags: ops are granted per channel below, and the
-# owner is recognised by handle, so nobody holds +n.
+# owner is recognised by handle, so nobody holds +n. A rehash re-reads the
+# userfile but never removes users, so every handle is dropped first and the
+# rendered roster is the whole truth.
 proc eggdrop_load_users {type} {
+  foreach handle [userlist] {
+    deluser $handle
+  }
   foreach {handle masks} {
 %{ for handle, masks in users ~}
     {${handle}} {${join(" ", masks)}}
@@ -37,6 +42,24 @@ proc eggdrop_load_users {type} {
 }
 bind evnt - userfile-loaded eggdrop_load_users
 
+set eggdrop_channels {
+%{ for channel in channels ~}
+  {${channel}}
+%{ endfor ~}
+}
+
+# A rehash neither parts nor forgets a channel the config dropped.
+proc eggdrop_prune_channels {type} {
+  global eggdrop_channels
+  set wanted [string tolower $eggdrop_channels]
+  foreach channel [channels] {
+    if {[lsearch -exact $wanted [string tolower $channel]] < 0} {
+      channel remove $channel
+    }
+  }
+}
+bind evnt - userfile-loaded eggdrop_prune_channels
+
 %{ for channel in channels ~}
 channel add ${channel} {
   chanmode "+nt"
@@ -44,20 +67,11 @@ channel add ${channel} {
 channel set ${channel} +protectops
 %{ endfor ~}
 
-# SiteUp is 1 only while the bot has ops in every channel. A bot that is up
-# but not opped publishes 0; a bot that is down publishes nothing, which the
-# alarm reads as down too.
+# SiteUp is 1 while the bot is registered with the IRC server. server-online
+# holds the time of the server's welcome, and 0 while disconnected; a bot that
+# is down publishes nothing, which the alarm reads as down too.
 proc eggdrop_up {} {
-  set channels [channels]
-  if {![llength $channels]} {
-    return 0
-  }
-  foreach channel $channels {
-    if {![botonchan $channel] || ![botisop $channel]} {
-      return 0
-    }
-  }
-  return 1
+  return [expr {[set ::server-online] > 0}]
 }
 
 proc eggdrop_heartbeat {minute hour day month year} {

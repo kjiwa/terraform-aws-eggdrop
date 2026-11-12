@@ -56,6 +56,17 @@ variable "eggdrop" {
   })
 }
 
+variable "image_ids" {
+  description = "AMI ID per architecture (arm64 and x86_64) to launch instead of the latest Amazon Linux 2023. Null tracks the latest, which replaces the instance whenever AWS publishes a release. A plan warns when a pinned image is stale."
+  type        = map(string)
+  default     = null
+
+  validation {
+    condition     = var.image_ids == null || toset(keys(var.image_ids)) == toset(["arm64", "x86_64"])
+    error_message = "image_ids must have exactly the keys arm64 and x86_64."
+  }
+}
+
 variable "domain_name" {
   description = "Domain the status page link points at."
   type        = string

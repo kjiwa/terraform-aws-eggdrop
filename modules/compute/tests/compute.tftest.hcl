@@ -3,7 +3,7 @@ mock_provider "aws" {
     defaults = { region = "us-west-2", name = "us-west-2" }
   }
   mock_data "aws_ssm_parameter" {
-    defaults = { value = "ami-0123456789abcdef0" }
+    defaults = { value = "ami-0123456789abcdef0", insecure_value = "ami-0123456789abcdef0" }
   }
   mock_data "aws_iam_policy_document" {
     defaults = { json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}" }
@@ -114,6 +114,54 @@ run "every_type_launches_its_own_architecture" {
   }
 }
 
+run "unpinned_image_tracks_the_latest" {
+  command = plan
+
+  assert {
+    condition     = aws_launch_template.this["x86_64"].image_id == "ami-0123456789abcdef0" && aws_launch_template.this["arm64"].image_id == "ami-0123456789abcdef0"
+    error_message = "Without image_ids both templates use the SSM image."
+  }
+}
+
+run "pinned_image_reaches_both_templates" {
+  command = plan
+  variables {
+    image_ids = { arm64 = "ami-0aaaaaaaaaaaaaaaa", x86_64 = "ami-0bbbbbbbbbbbbbbbb" }
+  }
+
+  assert {
+    condition     = aws_launch_template.this["arm64"].image_id == "ami-0aaaaaaaaaaaaaaaa" && aws_launch_template.this["x86_64"].image_id == "ami-0bbbbbbbbbbbbbbbb"
+    error_message = "Each template must launch its pinned image."
+  }
+
+  expect_failures = [check.image_is_latest]
+}
+
+run "stale_pin_warns" {
+  command = plan
+  variables {
+    image_ids = { arm64 = "ami-0123456789abcdef0", x86_64 = "ami-0bbbbbbbbbbbbbbbb" }
+  }
+
+  expect_failures = [check.image_is_latest]
+}
+
+run "current_pin_is_quiet" {
+  command = plan
+  variables {
+    image_ids = { arm64 = "ami-0123456789abcdef0", x86_64 = "ami-0123456789abcdef0" }
+  }
+}
+
+run "pin_must_name_both_architectures" {
+  command = plan
+  variables {
+    image_ids = { arm64 = "ami-0aaaaaaaaaaaaaaaa" }
+  }
+
+  expect_failures = [var.image_ids]
+}
+
 run "on_demand_when_spot_is_off" {
   command = plan
   variables {
@@ -152,6 +200,30 @@ run "boot_script_pins_the_release" {
   }
 }
 
+run "roster_changes_do_not_replace_the_instance" {
+  command = plan
+  variables {
+    channels = { "#other" = { ops = ["carol"] } }
+    users    = { carol = ["*!*carol@host.example"] }
+    owner    = "carol"
+  }
+
+  assert {
+    condition     = !contains(keys(local.boot_files), "config/eggdrop.tcl")
+    error_message = "The roster file must not be a boot file: user_data would hash it."
+  }
+
+  assert {
+    condition     = local.config_hash == sha256(join("", concat([for key in sort(keys(local.boot_files)) : local.boot_files[key]], [var.status_key])))
+    error_message = "config_hash covers the boot files and the status key only."
+  }
+
+  assert {
+    condition     = strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), local.config_hash) && contains(keys(aws_s3_object.config), "config/eggdrop.tcl")
+    error_message = "The roster file is still uploaded, but outside user_data."
+  }
+}
+
 run "rendered_config" {
   command = plan
 
@@ -186,6 +258,15 @@ run "rendered_config" {
   assert {
     condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "channel add #example") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "channel add #second")
     error_message = "Every channel must be added."
+  }
+}
+
+run "site_up_means_connected" {
+  command = plan
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "[set ::server-online]") && !strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "botisop")
+    error_message = "SiteUp must follow the server connection, not channel ops."
   }
 }
 
