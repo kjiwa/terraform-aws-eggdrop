@@ -8,7 +8,7 @@ resource "aws_launch_template" "this" {
   for_each = local.architectures
 
   name_prefix   = "${local.name}-${each.key}-"
-  image_id      = data.aws_ssm_parameter.al2023[each.key].value
+  image_id      = var.image_ids == null ? data.aws_ssm_parameter.al2023[each.key].value : var.image_ids[each.key]
   ebs_optimized = true
 
   iam_instance_profile {

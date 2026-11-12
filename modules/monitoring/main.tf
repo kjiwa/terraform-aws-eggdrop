@@ -2,7 +2,7 @@
 # the alarm reads silence as down. planned_causes is empty: a replacement of
 # any kind disconnects the bot from IRC, so it is an outage.
 module "availability" {
-  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/availability?ref=v0.7.0"
+  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/availability?ref=v0.7.1"
 
   name_prefix      = "eggdrop"
   metric_namespace = var.metric_namespace
@@ -21,7 +21,7 @@ module "availability" {
 }
 
 module "host_alarms" {
-  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/host-alarms?ref=v0.7.0"
+  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/host-alarms?ref=v0.7.1"
 
   name_prefix                       = "eggdrop"
   metric_namespace                  = var.metric_namespace

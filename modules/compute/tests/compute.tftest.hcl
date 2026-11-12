@@ -3,7 +3,7 @@ mock_provider "aws" {
     defaults = { region = "us-west-2", name = "us-west-2" }
   }
   mock_data "aws_ssm_parameter" {
-    defaults = { value = "ami-0123456789abcdef0" }
+    defaults = { value = "ami-0123456789abcdef0", insecure_value = "ami-0123456789abcdef0" }
   }
   mock_data "aws_iam_policy_document" {
     defaults = { json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}" }
@@ -112,6 +112,54 @@ run "every_type_launches_its_own_architecture" {
     condition     = aws_launch_template.this["arm64"].user_data == aws_launch_template.this["x86_64"].user_data
     error_message = "Both templates must boot the same config."
   }
+}
+
+run "unpinned_image_tracks_the_latest" {
+  command = plan
+
+  assert {
+    condition     = aws_launch_template.this["x86_64"].image_id == "ami-0123456789abcdef0" && aws_launch_template.this["arm64"].image_id == "ami-0123456789abcdef0"
+    error_message = "Without image_ids both templates use the SSM image."
+  }
+}
+
+run "pinned_image_reaches_both_templates" {
+  command = plan
+  variables {
+    image_ids = { arm64 = "ami-0aaaaaaaaaaaaaaaa", x86_64 = "ami-0bbbbbbbbbbbbbbbb" }
+  }
+
+  assert {
+    condition     = aws_launch_template.this["arm64"].image_id == "ami-0aaaaaaaaaaaaaaaa" && aws_launch_template.this["x86_64"].image_id == "ami-0bbbbbbbbbbbbbbbb"
+    error_message = "Each template must launch its pinned image."
+  }
+
+  expect_failures = [check.image_is_latest]
+}
+
+run "stale_pin_warns" {
+  command = plan
+  variables {
+    image_ids = { arm64 = "ami-0123456789abcdef0", x86_64 = "ami-0bbbbbbbbbbbbbbbb" }
+  }
+
+  expect_failures = [check.image_is_latest]
+}
+
+run "current_pin_is_quiet" {
+  command = plan
+  variables {
+    image_ids = { arm64 = "ami-0123456789abcdef0", x86_64 = "ami-0123456789abcdef0" }
+  }
+}
+
+run "pin_must_name_both_architectures" {
+  command = plan
+  variables {
+    image_ids = { arm64 = "ami-0aaaaaaaaaaaaaaaa" }
+  }
+
+  expect_failures = [var.image_ids]
 }
 
 run "on_demand_when_spot_is_off" {
