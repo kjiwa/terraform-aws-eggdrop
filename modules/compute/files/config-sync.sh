@@ -13,8 +13,9 @@ log() {
 }
 
 main() {
+  _main_bucket="$1"
   _main_tmp="$(mktemp "$SCRIPT_DIR/eggdrop.tcl.XXXXXX")"
-  if ! aws s3 cp "s3://$1/$KEY" "$_main_tmp" --only-show-errors; then
+  if ! aws s3 cp "s3://$_main_bucket/$KEY" "$_main_tmp" --only-show-errors; then
     rm -f "$_main_tmp"
     log "fetch failed; keeping the current roster"
     return 1
