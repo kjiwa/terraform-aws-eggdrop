@@ -1,0 +1,5 @@
+# The bot bucket holds a tarball and rendered config that can be rebuilt, and
+# the status token key, which also sits in SSM under the AWS-managed key. A
+# customer managed key would add a monthly charge and key-policy wiring for no
+# access the account boundary does not already give.
+AWS-0132

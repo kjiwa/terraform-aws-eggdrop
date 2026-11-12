@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+testpaths = ["modules/status/tests"]
+
+[tool.ruff]
+target-version = "py313"
