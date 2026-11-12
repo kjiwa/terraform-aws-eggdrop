@@ -1,0 +1,74 @@
+# Rendered by Terraform. Users, channels, the heartbeat and the status link.
+
+set naju_region "${region}"
+set naju_namespace "${metric_namespace}"
+set naju_domain "${domain_name}"
+set naju_token_ttl 43200
+
+# Answer only the status command: every other built-in /msg command is
+# unbound, so a stranger's message gets no response.
+foreach naju_bind [binds msg] {
+  lassign $naju_bind naju_type naju_flags naju_mask naju_hits naju_proc
+  unbind $naju_type $naju_flags $naju_mask $naju_proc
+}
+unset -nocomplain naju_bind naju_type naju_flags naju_mask naju_hits naju_proc
+
+# handle flags {hostmasks}
+proc naju_load_users {type} {
+  foreach {handle flags masks} {
+%{ for handle, user in users ~}
+    {${handle}} ${user.flags} {${join(" ", user.masks)}}
+%{ endfor ~}
+  } {
+    adduser $handle [lindex $masks 0]
+    foreach mask [lrange $masks 1 end] {
+      setuser $handle HOSTS $mask
+    }
+    chattr $handle $flags
+  }
+}
+bind evnt - userfile-loaded naju_load_users
+
+%{ for channel in channels ~}
+channel add ${channel} {
+  chanmode "+nt"
+}
+channel set ${channel} +protectops
+%{ endfor ~}
+
+# SiteUp is 1 only while the bot has ops in every channel. A bot that is up
+# but not opped publishes 0; a bot that is down publishes nothing, which the
+# alarm reads as down too.
+proc naju_up {} {
+  set channels [channels]
+  if {![llength $channels]} {
+    return 0
+  }
+  foreach channel $channels {
+    if {![botonchan $channel] || ![botisop $channel]} {
+      return 0
+    }
+  }
+  return 1
+}
+
+proc naju_heartbeat {minute hour day month year} {
+  global naju_region naju_namespace
+  catch {
+    exec aws cloudwatch put-metric-data --region $naju_region \
+      --namespace $naju_namespace --metric-name SiteUp --value [naju_up] \
+      > /dev/null 2> /dev/null &
+  }
+}
+bind time - "* * * * *" naju_heartbeat
+
+proc naju_status {nick uhost handle text} {
+  global naju_domain naju_token_ttl
+  if {[catch {exec python3 /opt/eggdrop/naju-token /opt/eggdrop/status.key $naju_token_ttl} token]} {
+    putserv "NOTICE $nick :could not mint a token"
+    return 1
+  }
+  putserv "NOTICE $nick :https://$naju_domain/signin#token=$token (valid for 12 hours)"
+  return 1
+}
+bind msg n status naju_status
