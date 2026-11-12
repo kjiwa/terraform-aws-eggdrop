@@ -15,8 +15,13 @@ foreach eggdrop_bind [binds msg] {
 unset -nocomplain eggdrop_bind eggdrop_type eggdrop_flags eggdrop_mask eggdrop_hits eggdrop_proc
 
 # Users carry no global flags: ops are granted per channel below, and the
-# owner is recognised by handle, so nobody holds +n.
+# owner is recognised by handle, so nobody holds +n. A rehash re-reads the
+# userfile but never removes users, so every handle is dropped first and the
+# rendered roster is the whole truth.
 proc eggdrop_load_users {type} {
+  foreach handle [userlist] {
+    deluser $handle
+  }
   foreach {handle masks} {
 %{ for handle, masks in users ~}
     {${handle}} {${join(" ", masks)}}
@@ -36,6 +41,24 @@ proc eggdrop_load_users {type} {
   }
 }
 bind evnt - userfile-loaded eggdrop_load_users
+
+set eggdrop_channels {
+%{ for channel in channels ~}
+  {${channel}}
+%{ endfor ~}
+}
+
+# A rehash neither parts nor forgets a channel the config dropped.
+proc eggdrop_prune_channels {type} {
+  global eggdrop_channels
+  set wanted [string tolower $eggdrop_channels]
+  foreach channel [channels] {
+    if {[lsearch -exact $wanted [string tolower $channel]] < 0} {
+      channel remove $channel
+    }
+  }
+}
+bind evnt - userfile-loaded eggdrop_prune_channels
 
 %{ for channel in channels ~}
 channel add ${channel} {

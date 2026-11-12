@@ -152,6 +152,30 @@ run "boot_script_pins_the_release" {
   }
 }
 
+run "roster_changes_do_not_replace_the_instance" {
+  command = plan
+  variables {
+    channels = { "#other" = { ops = ["carol"] } }
+    users    = { carol = ["*!*carol@host.example"] }
+    owner    = "carol"
+  }
+
+  assert {
+    condition     = !contains(keys(local.boot_files), "config/eggdrop.tcl")
+    error_message = "The roster file must not be a boot file: user_data would hash it."
+  }
+
+  assert {
+    condition     = local.config_hash == sha256(join("", concat([for key in sort(keys(local.boot_files)) : local.boot_files[key]], [var.status_key])))
+    error_message = "config_hash covers the boot files and the status key only."
+  }
+
+  assert {
+    condition     = strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), local.config_hash) && contains(keys(aws_s3_object.config), "config/eggdrop.tcl")
+    error_message = "The roster file is still uploaded, but outside user_data."
+  }
+}
+
 run "rendered_config" {
   command = plan
 
