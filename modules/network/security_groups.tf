@@ -41,23 +41,39 @@ resource "aws_vpc_security_group_egress_rule" "app_https_ipv6" {
   cidr_ipv6         = "::/0"
 }
 
+locals {
+  irc_port_rules = { for port in var.irc_ports : tostring(port) => port }
+}
+
+# Valid for the default port, which every v0.4.0 caller used unless irc_server.port was set.
+moved {
+  from = aws_vpc_security_group_egress_rule.app_irc_ipv6
+  to   = aws_vpc_security_group_egress_rule.app_irc_ipv6["6697"]
+}
+
+moved {
+  from = aws_vpc_security_group_egress_rule.app_irc_ipv4[0]
+  to   = aws_vpc_security_group_egress_rule.app_irc_ipv4["6697"]
+}
+
 resource "aws_vpc_security_group_egress_rule" "app_irc_ipv6" {
+  for_each          = local.irc_port_rules
   security_group_id = aws_security_group.app.id
   description       = "IRC over TLS over IPv6."
   ip_protocol       = "tcp"
-  from_port         = var.irc_port
-  to_port           = var.irc_port
+  from_port         = each.value
+  to_port           = each.value
   cidr_ipv6         = "::/0"
 }
 
 # The AWS APIs stay on IPv6 (above); only IRC needs the IPv4 path.
 resource "aws_vpc_security_group_egress_rule" "app_irc_ipv4" {
-  count             = var.ipv4_enabled ? 1 : 0
+  for_each          = var.ipv4_enabled ? local.irc_port_rules : {}
   security_group_id = aws_security_group.app.id
   description       = "IRC over TLS over IPv4."
   ip_protocol       = "tcp"
-  from_port         = var.irc_port
-  to_port           = var.irc_port
+  from_port         = each.value
+  to_port           = each.value
   cidr_ipv4         = "0.0.0.0/0"
 }
 

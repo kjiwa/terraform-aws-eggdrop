@@ -18,6 +18,11 @@ variable "metric_namespace" {
   type        = string
 }
 
+variable "group_size" {
+  description = "Expected number of listed nicks present, at most the number of bots; GroupSize below it for 20 minutes alarms."
+  type        = number
+}
+
 variable "active" {
   description = "If false the environment is asleep and the alarm-notification rule is disabled."
   type        = bool

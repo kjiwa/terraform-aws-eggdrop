@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.5.0
+
+### Changed
+
+- `irc_server` is now `irc_servers`, a list of `{ host, port = 6697 }` for one network: 1 to 50 pairs, unique ignoring the case of the host, with ports 1 to 65535 and hostnames or IPv4 addresses only. The bots try them in order and wrap at the end. The network module takes `irc_ports` and opens egress once per distinct port.
+- The root `channels` description no longer says `SiteUp` depends on ops.
+
+### Added
+
+- `GroupSize`: each bot publishes how many of the `nicks` share one of its channels, in the same call as `SiteUp`.
+- The `eggdrop-group-size` alarm in `modules/monitoring`: minimum `GroupSize` below `min(bots, length(nicks))` for 20 one-minute periods, missing data counted as below, mailed through the status page alert topic. The monitoring module takes `group_size`.
+
+### Upgrade
+
+- Rename `irc_server = { host = "h" }` to `irc_servers = [{ host = "h" }]`.
+- The apply refreshes the bots one at a time.
+- The IRC egress rules move to per-port addresses in state. A non-default port plans a destroy and create of one rule.
+- The alarm needs the group at `min(bots, length(nicks))` for 20 minutes before it clears, so a refresh that takes a bot out for longer than that alarms.
+
 ## v0.4.0
 
 ### Changed

@@ -25,7 +25,9 @@ set net-type "EFnet"
 # IPv4 is routed only with ipv4_enabled. Takes the AAAA record when the server
 # has one, else the A record.
 set prefer-ipv6 1
-server add ${irc_server.host} +${irc_server.port}
+%{ for server in irc_servers ~}
+server add ${server.host} +${server.port}
+%{ endfor ~}
 
 set userfile "eggdrop.user"
 set chanfile "eggdrop.chan"
