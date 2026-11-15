@@ -322,6 +322,11 @@ run "bots_claim_the_listed_nicks" {
   }
 
   assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set nick $botnick")
+    error_message = "A rehash must keep the nick the bot has claimed."
+  }
+
+  assert {
     condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "eggdrop-ready ${local.name} ${local.lifecycle_hook_name}")
     error_message = "The bot must release its own launch hook."
   }

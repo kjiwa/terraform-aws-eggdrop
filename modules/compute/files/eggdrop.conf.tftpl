@@ -7,7 +7,14 @@ loadmodule server
 loadmodule ctcp
 loadmodule irc
 
-set nick "${nicks[0]}"
+set eggdrop_nicks {%{ for nick in nicks } ${nick}%{ endfor } }
+
+# A rehash re-reads this file, so a bot that has claimed a listed name keeps it.
+if {[info exists botnick] && [lsearch -exact -nocase $eggdrop_nicks $botnick] >= 0} {
+  set nick $botnick
+} else {
+  set nick "${nicks[0]}"
+}
 set altnick "${nicks[0]}?"
 set realname "${nicks[0]}"
 set username "${nicks[0]}"
@@ -38,8 +45,6 @@ proc eggdrop_init_server {type} {
 
 # Every bot boots as the first nick. One that holds no listed name tries the
 # next each minute; set nick also moves keep-nick's target to the claimed name.
-set eggdrop_nicks {%{ for nick in nicks } ${nick}%{ endfor } }
-
 proc eggdrop_claim_nick {minute hour day month year} {
   global eggdrop_nicks botnick
   if {![eggdrop_up] || [lsearch -exact -nocase $eggdrop_nicks $botnick] >= 0} {
