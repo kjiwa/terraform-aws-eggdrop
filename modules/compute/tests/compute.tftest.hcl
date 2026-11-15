@@ -37,8 +37,8 @@ variables {
   app_sg_id               = "sg-0123456789abcdef0"
   active                  = true
   spot_enabled            = true
-  nicks                   = ["eggdrop"]
-  bots                    = 1
+  nicks                   = ["naju", "zera"]
+  bots                    = 2
   subnet_ipv6_cidr_blocks = ["2001:db8:1:0::/64", "2001:db8:1:1::/64"]
   irc_server              = { host = "irc.example.net", port = 6697 }
   channels                = { "#example" = { ops = ["alice", "bob"] }, "#second" = { ops = ["bob"] } }
@@ -89,8 +89,36 @@ run "instance_contract" {
   }
 
   assert {
-    condition     = aws_autoscaling_group.this.min_size == 1 && aws_autoscaling_group.this.max_size == 1
-    error_message = "One instance when active."
+    condition     = aws_autoscaling_group.this.min_size == 2 && aws_autoscaling_group.this.desired_capacity == 2 && aws_autoscaling_group.this.max_size == 3
+    error_message = "bots instances when active, with one extra allowed for a rebalance or a refresh."
+  }
+
+  assert {
+    condition     = aws_autoscaling_group.this.capacity_rebalance
+    error_message = "A rebalance must start a replacement before the old bot goes."
+  }
+
+  assert {
+    condition     = one(one(aws_autoscaling_group.this.instance_refresh).preferences).min_healthy_percentage == 100 && one(one(aws_autoscaling_group.this.instance_refresh).preferences).max_healthy_percentage == 150 && one(one(aws_autoscaling_group.this.instance_refresh).preferences).skip_matching
+    error_message = "A refresh adds one bot at a time and never drops below the group size."
+  }
+
+  assert {
+    condition     = aws_autoscaling_lifecycle_hook.launching.lifecycle_transition == "autoscaling:EC2_INSTANCE_LAUNCHING" && aws_autoscaling_lifecycle_hook.launching.default_result == "ABANDON" && aws_autoscaling_lifecycle_hook.launching.name == local.lifecycle_hook_name
+    error_message = "A launch waits for the bot to be ready, and an expired wait abandons the instance."
+  }
+}
+
+run "refresh_headroom_follows_group_size" {
+  command = plan
+  variables {
+    nicks = ["naju"]
+    bots  = 1
+  }
+
+  assert {
+    condition     = one(one(aws_autoscaling_group.this.instance_refresh).preferences).max_healthy_percentage == 200 && aws_autoscaling_group.this.max_size == 2
+    error_message = "A single bot is replaced by starting the new one first."
   }
 }
 
@@ -263,13 +291,94 @@ run "rendered_config" {
   }
 }
 
+run "peers_op_each_other" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      for mask in ["*!*@2001:db8:1:0:*", "*!*@2001:db8:1:1:*"] :
+      strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, mask)
+    ])
+    error_message = "Every subnet's address range is a peer mask."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "chattr peers |+fao $channel")
+    error_message = "Peers are opped in every channel."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "proc eggdrop_op_members") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "bind evnt - userfile-loaded eggdrop_schedule_op_members")
+    error_message = "A roster reload must op members who now match."
+  }
+}
+
+run "bots_claim_the_listed_nicks" {
+  command = plan
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set nick \"naju\"") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set eggdrop_nicks { naju zera }")
+    error_message = "Every bot boots as the first nick and knows the whole list."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "eggdrop-ready ${local.name} ${local.lifecycle_hook_name}")
+    error_message = "The bot must release its own launch hook."
+  }
+}
+
 run "site_up_means_connected" {
   command = plan
 
   assert {
-    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "[set ::server-online]") && !strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "botisop")
-    error_message = "SiteUp must follow the server connection, not channel ops."
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "[set ::server-online]") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "if {![eggdrop_up]} {\n    return\n  }") && !strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "--value 0")
+    error_message = "A connected bot publishes SiteUp 1 and a disconnected one publishes nothing, so the metric follows the group, not one bot's ops."
   }
+}
+
+run "compressed_prefix_is_rejected" {
+  command = plan
+  variables {
+    subnet_ipv6_cidr_blocks = ["2001:db8:1::/64", "2001:db8:1:1::/64"]
+  }
+
+  expect_failures = [var.subnet_ipv6_cidr_blocks]
+}
+
+run "fewer_bots_than_nicks_is_rejected" {
+  command = plan
+  variables {
+    bots = 1
+  }
+
+  expect_failures = [var.bots]
+}
+
+run "duplicate_nick_is_rejected" {
+  command = plan
+  variables {
+    nicks = ["naju", "naju"]
+  }
+
+  expect_failures = [var.nicks]
+}
+
+run "peers_cannot_be_a_nick" {
+  command = plan
+  variables {
+    nicks = ["peers", "zera"]
+  }
+
+  expect_failures = [var.nicks]
+}
+
+run "peers_cannot_be_a_user" {
+  command = plan
+  variables {
+    users = { peers = ["*!*x@host.example"] }
+  }
+
+  expect_failures = [var.users]
 }
 
 run "bot_bucket_is_private" {
