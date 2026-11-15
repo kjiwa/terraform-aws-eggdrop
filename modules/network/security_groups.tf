@@ -45,6 +45,17 @@ locals {
   irc_port_rules = { for port in var.irc_ports : tostring(port) => port }
 }
 
+# Valid for the default port, which every v0.4.0 caller used unless irc_server.port was set.
+moved {
+  from = aws_vpc_security_group_egress_rule.app_irc_ipv6
+  to   = aws_vpc_security_group_egress_rule.app_irc_ipv6["6697"]
+}
+
+moved {
+  from = aws_vpc_security_group_egress_rule.app_irc_ipv4[0]
+  to   = aws_vpc_security_group_egress_rule.app_irc_ipv4["6697"]
+}
+
 resource "aws_vpc_security_group_egress_rule" "app_irc_ipv6" {
   for_each          = local.irc_port_rules
   security_group_id = aws_security_group.app.id

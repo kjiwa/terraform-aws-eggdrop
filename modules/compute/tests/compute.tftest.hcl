@@ -376,6 +376,42 @@ run "duplicate_server_is_rejected" {
   expect_failures = [var.irc_servers]
 }
 
+run "irc_servers_reject_port_zero" {
+  command = plan
+  variables {
+    irc_servers = [{ host = "irc.example.net", port = 0 }]
+  }
+
+  expect_failures = [var.irc_servers]
+}
+
+run "irc_servers_reject_port_above_65535" {
+  command = plan
+  variables {
+    irc_servers = [{ host = "irc.example.net", port = 70000 }]
+  }
+
+  expect_failures = [var.irc_servers]
+}
+
+run "irc_servers_reject_empty_host" {
+  command = plan
+  variables {
+    irc_servers = [{ host = "", port = 6697 }]
+  }
+
+  expect_failures = [var.irc_servers]
+}
+
+run "irc_servers_reject_hosts_differing_only_by_case" {
+  command = plan
+  variables {
+    irc_servers = [{ host = "irc.example.net", port = 6697 }, { host = "IRC.Example.net", port = 6697 }]
+  }
+
+  expect_failures = [var.irc_servers]
+}
+
 run "heartbeat_sends_group_size_with_site_up" {
   command = plan
 

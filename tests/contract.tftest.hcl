@@ -112,6 +112,58 @@ run "irc_servers_must_be_unique" {
   expect_failures = [var.irc_servers]
 }
 
+run "irc_servers_reject_port_zero" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    irc_servers = [{ host = "irc.example.net", port = 0 }]
+  }
+
+  expect_failures = [var.irc_servers]
+}
+
+run "irc_servers_reject_port_above_65535" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    irc_servers = [{ host = "irc.example.net", port = 70000 }]
+  }
+
+  expect_failures = [var.irc_servers]
+}
+
+run "irc_servers_reject_empty_host" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    irc_servers = [{ host = "" }]
+  }
+
+  expect_failures = [var.irc_servers]
+}
+
+run "irc_servers_reject_hosts_differing_only_by_case" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    irc_servers = [{ host = "irc.example.net" }, { host = "IRC.Example.net" }]
+  }
+
+  expect_failures = [var.irc_servers]
+}
+
 run "irc_servers_are_at_most_fifty" {
   command = plan
   providers = {

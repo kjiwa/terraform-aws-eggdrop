@@ -43,7 +43,7 @@ resource "aws_cloudwatch_metric_alarm" "group_size" {
   count = var.active ? 1 : 0
 
   alarm_name          = local.group_size_alarm_name
-  alarm_description   = "Fewer bots than ${var.bots} share a channel for 20 minutes: a bot is down, split off or on another network."
+  alarm_description   = "Fewer than ${var.group_size} listed nicks share a channel for 20 minutes: a bot is down, split off or on another network."
   namespace           = var.metric_namespace
   metric_name         = "GroupSize"
   statistic           = "Minimum"
@@ -51,7 +51,7 @@ resource "aws_cloudwatch_metric_alarm" "group_size" {
   evaluation_periods  = 20
   datapoints_to_alarm = 20
   comparison_operator = "LessThanThreshold"
-  threshold           = var.bots
+  threshold           = var.group_size
   treat_missing_data  = "breaching"
   alarm_actions       = [module.availability.sns_topic_arn]
   ok_actions          = [module.availability.sns_topic_arn]

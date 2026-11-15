@@ -38,7 +38,7 @@ module "monitoring" {
   asg_name         = module.compute.asg_name
   alert_email      = var.alert_email
   metric_namespace = local.metric_namespace
-  bots             = var.bots
+  group_size       = min(var.bots, length(var.nicks))
   active           = var.active
 }
 

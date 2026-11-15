@@ -18,8 +18,8 @@ variable "metric_namespace" {
   type        = string
 }
 
-variable "bots" {
-  description = "Number of bots that should share a channel; GroupSize below it for 20 minutes alarms."
+variable "group_size" {
+  description = "Expected number of listed nicks present, at most the number of bots; GroupSize below it for 20 minutes alarms."
   type        = number
 }
 

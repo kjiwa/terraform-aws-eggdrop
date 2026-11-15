@@ -53,8 +53,18 @@ variable "irc_servers" {
   }
 
   validation {
-    condition     = length(distinct([for server in var.irc_servers : "${server.host}:${server.port}"])) == length(var.irc_servers)
-    error_message = "Each host:port pair in irc_servers must be unique."
+    condition     = alltrue([for server in var.irc_servers : server.port >= 1 && server.port <= 65535])
+    error_message = "Each port in irc_servers must be between 1 and 65535."
+  }
+
+  validation {
+    condition     = alltrue([for server in var.irc_servers : can(regex("^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$", server.host))])
+    error_message = "Each host in irc_servers must be a non-empty hostname or IPv4 address of letters, digits, dots and hyphens; IPv6 literals are not supported."
+  }
+
+  validation {
+    condition     = length(distinct([for server in var.irc_servers : "${lower(server.host)}:${server.port}"])) == length(var.irc_servers)
+    error_message = "Each host:port pair in irc_servers must be unique, ignoring the case of the host."
   }
 }
 

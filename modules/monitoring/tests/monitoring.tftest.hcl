@@ -17,7 +17,7 @@ variables {
   asg_name         = "eggdrop"
   alert_email      = "ops@example.com"
   metric_namespace = "Eggdrop"
-  bots             = 2
+  group_size       = 2
   active           = true
 }
 
@@ -37,12 +37,24 @@ run "group_size_alarm_needs_every_bot_for_twenty_minutes" {
 
   assert {
     condition     = aws_cloudwatch_metric_alarm.group_size[0].namespace == "Eggdrop" && aws_cloudwatch_metric_alarm.group_size[0].metric_name == "GroupSize" && aws_cloudwatch_metric_alarm.group_size[0].statistic == "Minimum" && aws_cloudwatch_metric_alarm.group_size[0].comparison_operator == "LessThanThreshold" && aws_cloudwatch_metric_alarm.group_size[0].threshold == 2
-    error_message = "The alarm must watch the minimum GroupSize and fire below bots."
+    error_message = "The alarm must watch the minimum GroupSize and fire below group_size."
   }
 
   assert {
     condition     = aws_cloudwatch_metric_alarm.group_size[0].period == 60 && aws_cloudwatch_metric_alarm.group_size[0].evaluation_periods == 20 && aws_cloudwatch_metric_alarm.group_size[0].datapoints_to_alarm == 20 && aws_cloudwatch_metric_alarm.group_size[0].treat_missing_data == "breaching"
     error_message = "The alarm needs 20 consecutive one-minute breaches, and silence breaches."
+  }
+}
+
+run "group_size_threshold_follows_the_variable" {
+  command = plan
+  variables {
+    group_size = 3
+  }
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.group_size[0].threshold == 3
+    error_message = "The threshold must equal group_size."
   }
 }
 
