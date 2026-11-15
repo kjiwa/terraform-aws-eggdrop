@@ -3,6 +3,11 @@ output "subnet_ids" {
   value       = [for az in local.azs : aws_subnet.this[az].id]
 }
 
+output "subnet_ipv6_cidr_blocks" {
+  description = "Each subnet's /64, ordered like subnet_ids."
+  value       = [for az in local.azs : aws_subnet.this[az].ipv6_cidr_block]
+}
+
 output "app_sg_id" {
   description = "Security group attached to the instance."
   value       = aws_security_group.app.id
