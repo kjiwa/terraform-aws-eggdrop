@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The `irc_server` and `irc_port` descriptions, the README intro and the network comments now say IPv4 is available with `ipv4_enabled`, and that the instance has no Session Manager access because its role grants none. The Eggdrop config comment changed too, which alters `config_hash`, so the next release replaces the instance.
+
 ## v0.3.0
 
 ### Changed

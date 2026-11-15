@@ -24,7 +24,7 @@ variable "nick" {
 }
 
 variable "irc_server" {
-  description = "IRC server the bot connects to over TLS and IPv6."
+  description = "IRC server the bot connects to over TLS, preferring IPv6."
   type = object({
     host = string
     port = number
