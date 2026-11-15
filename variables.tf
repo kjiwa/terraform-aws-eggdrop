@@ -40,12 +40,22 @@ variable "bots" {
   }
 }
 
-variable "irc_server" {
-  description = "IRC server the bot connects to over TLS. It must have an AAAA record unless ipv4_enabled is set."
-  type = object({
+variable "irc_servers" {
+  description = "Servers of one IRC network, tried in order over TLS. The bot starts at the first and moves to the next when a connection fails, wrapping at the end. Every host needs an AAAA record unless ipv4_enabled is set."
+  type = list(object({
     host = string
     port = optional(number, 6697)
-  })
+  }))
+
+  validation {
+    condition     = length(var.irc_servers) >= 1 && length(var.irc_servers) <= 50
+    error_message = "irc_servers must list between 1 and 50 servers."
+  }
+
+  validation {
+    condition     = length(distinct([for server in var.irc_servers : "${server.host}:${server.port}"])) == length(var.irc_servers)
+    error_message = "Each host:port pair in irc_servers must be unique."
+  }
 }
 
 variable "users" {
@@ -71,7 +81,7 @@ variable "users" {
 }
 
 variable "channels" {
-  description = "Channels the bot joins, keyed by name. ops lists the handles in users that the bot ops on join in that channel. SiteUp is 1 only while the bot has ops in every channel."
+  description = "Channels the bot joins, keyed by name. ops lists the handles in users that the bot ops on join in that channel. Every channel is joined, and the bots op each other and the listed users there."
   type = map(object({
     ops = optional(list(string), [])
   }))

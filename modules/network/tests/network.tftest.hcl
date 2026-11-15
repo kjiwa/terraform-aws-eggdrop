@@ -24,7 +24,7 @@ override_resource {
 }
 
 variables {
-  irc_port = 6697
+  irc_ports = [6697]
 }
 
 run "one_subnet_per_zone" {
@@ -70,12 +70,12 @@ run "ipv6_only_with_no_inbound_path" {
   }
 
   assert {
-    condition     = aws_vpc_security_group_egress_rule.app_irc_ipv6.from_port == 6697 && aws_vpc_security_group_egress_rule.app_irc_ipv6.to_port == 6697
-    error_message = "IRC egress must follow irc_port."
+    condition     = aws_vpc_security_group_egress_rule.app_irc_ipv6["6697"].from_port == 6697 && aws_vpc_security_group_egress_rule.app_irc_ipv6["6697"].to_port == 6697
+    error_message = "IRC egress must follow irc_ports."
   }
 
   assert {
-    condition     = aws_vpc_security_group_egress_rule.app_https_ipv6.cidr_ipv6 == "::/0" && aws_vpc_security_group_egress_rule.app_irc_ipv6.cidr_ipv6 == "::/0"
+    condition     = aws_vpc_security_group_egress_rule.app_https_ipv6.cidr_ipv6 == "::/0" && aws_vpc_security_group_egress_rule.app_irc_ipv6["6697"].cidr_ipv6 == "::/0"
     error_message = "Egress is IPv6 only: HTTPS for the AWS APIs and the IRC port."
   }
 }
@@ -101,7 +101,20 @@ run "ipv4_enabled_opens_only_the_irc_port" {
   }
 
   assert {
-    condition     = aws_vpc_security_group_egress_rule.app_irc_ipv4[0].from_port == 6697 && aws_vpc_security_group_egress_rule.app_irc_ipv4[0].to_port == 6697 && aws_vpc_security_group_egress_rule.app_irc_ipv4[0].cidr_ipv4 == "0.0.0.0/0"
+    condition     = aws_vpc_security_group_egress_rule.app_irc_ipv4["6697"].from_port == 6697 && aws_vpc_security_group_egress_rule.app_irc_ipv4["6697"].to_port == 6697 && aws_vpc_security_group_egress_rule.app_irc_ipv4["6697"].cidr_ipv4 == "0.0.0.0/0"
     error_message = "IPv4 egress is the IRC port only."
+  }
+}
+
+run "one_egress_rule_per_port" {
+  command = plan
+  variables {
+    irc_ports    = [6697, 7000]
+    ipv4_enabled = true
+  }
+
+  assert {
+    condition     = toset(keys(aws_vpc_security_group_egress_rule.app_irc_ipv6)) == toset(["6697", "7000"]) && toset(keys(aws_vpc_security_group_egress_rule.app_irc_ipv4)) == toset(["6697", "7000"]) && aws_vpc_security_group_egress_rule.app_irc_ipv6["7000"].to_port == 7000 && aws_vpc_security_group_egress_rule.app_irc_ipv4["7000"].from_port == 7000
+    error_message = "Every distinct port gets one IPv6 rule and, with ipv4_enabled, one IPv4 rule."
   }
 }

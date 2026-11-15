@@ -30,10 +30,10 @@ module "eggdrop" {
   zone_id     = aws_route53_zone.this.zone_id
   alert_email = "ops@example.com"
 
-  irc_server = { host = "irc.example.net" }
-  channels   = { "#example" = { ops = ["alice"] } }
-  users      = { alice = ["*!*alice@2001:db8:1:2??:*"] }
-  owner      = "alice"
+  irc_servers = [{ host = "irc.example.net" }]
+  channels    = { "#example" = { ops = ["alice"] } }
+  users       = { alice = ["*!*alice@2001:db8:1:2??:*"] }
+  owner       = "alice"
 
   eggdrop = { version = "1.10.2", sha256 = "<sha256 of eggdrop-1.10.2.tar.gz>" }
 }
@@ -45,7 +45,7 @@ See `examples/minimal`. Pin a literal `?ref=vX.Y.Z`; before 1.0 a minor release 
 | --- | --- |
 | `domain_name`, `zone_id` | Apex domain for the status page and its Route 53 zone. |
 | `alert_email` | Receives the DOWN and RECOVERED emails. |
-| `irc_server` | `{ host, port = 6697 }`. TLS over IPv6, so the host needs an AAAA record unless `ipv4_enabled`. |
+| `irc_servers` | List of `{ host, port = 6697 }` for one IRC network: 1 to 50 unique pairs, tried in order, wrapping at the end. TLS over IPv6, so each host needs an AAAA record unless `ipv4_enabled`. Egress opens once per distinct port. |
 | `channels` | Channels to join, each with `ops`: the handles in `users` the bot ops there. |
 | `users` | Handle to hostmask patterns of the people the bot recognises. |
 | `owner` | The handle in `users` that may request a status page link. It gets no ops unless a channel lists it. |
@@ -79,13 +79,15 @@ The module adds the handle `peers` for the bots' own address ranges (each subnet
 
 To upgrade from v0.1.0, apply with `active = false` first, then apply the new version with `active = true`: the subnets are replaced, which cannot happen while an instance is running in the old one.
 
-To roll out a new Eggdrop version, upload the new tarball, then change `eggdrop`. Changes to `channels`, `users` and `owner` do not replace the instance: the bot checks the bucket every minute and, when the roster differs, reloads in place without leaving IRC. A channel removed from `channels` is dropped from the bot's list but not necessarily parted. Any other change to the rendered config, to `nicks`, `irc_server` or `image_ids`, or a new status key refreshes the instances one at a time: each new bot waits in `Pending:Wait` until it is in its channels, and the old one is retired after. The refresh needs a peer in place to op the new bot, so it keeps ops with two or more bots; `terraform output asg_name` names the group for a manual `aws autoscaling start-instance-refresh`.
+To roll out a new Eggdrop version, upload the new tarball, then change `eggdrop`. Changes to `channels`, `users` and `owner` do not replace the instance: the bot checks the bucket every minute and, when the roster differs, reloads in place without leaving IRC. A channel removed from `channels` is dropped from the bot's list but not necessarily parted. Any other change to the rendered config, to `nicks`, `irc_servers` or `image_ids`, or a new status key refreshes the instances one at a time: each new bot waits in `Pending:Wait` until it is in its channels, and the old one is retired after. The refresh needs a peer in place to op the new bot, so it keeps ops with two or more bots; `terraform output asg_name` names the group for a manual `aws autoscaling start-instance-refresh`.
 
 To update a pinned image, read the latest IDs with `aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-<arch>`, where `<arch>` is `arm64` or `x86_64`, and set `image_ids`. AWS announces releases on an SNS topic in us-east-1 that takes email subscriptions (AL2023 user guide, "Receive update notifications"). IDs are per region. `dnf-automatic` applies security updates to a running instance, so a pin ages gracefully, but a stale one still warns.
 
 ## Availability
 
 Each bot publishes the `SiteUp` metric every minute while it is connected to the IRC server, whether or not it holds ops, and nothing while it is not. The status page's schedule writes a 0 for each minute no bot published, so the site is up while any bot is connected, and the alarm fires on any one bad minute of the last three. DOWN and RECOVERED emails, the episode record and the Spot capture of the status page all work from that one metric. With one bot, any replacement counts as an outage in the uptime figures, because the bot is off IRC until the replacement connects. With two or more, an outage is every bot off IRC at once.
+
+Each bot also publishes `GroupSize` in the same call: how many of the `nicks` are in any of its channels, itself included. The `eggdrop-group-size` alarm fires when the smallest value stays below `bots` for 20 minutes, and treats silence as below. It mails the status page's alert topic, and costs about 0.40 USD a month (one custom metric and one alarm, not measured). It catches a dead bot, a bot that cannot connect, a bot on another network and a split between the bots. It is off while `active` is false.
 
 The status page gate verifies the token in a Lambda with a key in SSM, so it works while the bot is down.
 
@@ -111,5 +113,10 @@ Unit tests cannot start a bot. Before a release, build Eggdrop on Amazon Linux 2
 - One reclaim at a time keeps ops: the other bot stays in the channels and ops the replacement. Simultaneous reclaims, or `bots = 1`, drop ops until someone re-ops a bot.
 - Bots recognise each other by IPv6 address range. A bot connected over IPv4 (`ipv4_enabled`) is not recognised and is not opped by its peers.
 - The launch hook is a separate resource, so on the first apply of a version that adds it the group's first instances can launch before it exists.
+- A dead or wrong host in `irc_servers` costs a bot one connection attempt before it moves on; the cycle wait is about a minute. If no host answers, no bot connects and the `SiteUp` alarm fires.
+- A server outage moves every bot to the next listed server together. Ops survive only if someone else holds the channel; otherwise the first bot to join the empty channel gets ops and the peers op each other.
+- All bots use the same list in the same order, so one server outage takes them all off at once. Per-bot servers are not supported: the bots are interchangeable.
+- A server split leaves each side with its bots, and the channel merge deops one side when the split heals. The peers op each other afterwards. `GroupSize` is the only signal.
+- A list that mixes networks can land the bots on different networks, each seeing an empty channel and opping itself. `SiteUp` stays 1; only the `GroupSize` alarm notices.
 - Nick collisions after a replacement: the old nick lingers on the server until it times out. The bot takes its alternate nick and reclaims the primary.
 - The status page lists only what the status-page core can see from AWS. The bot reports no host metrics.

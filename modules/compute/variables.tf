@@ -53,12 +53,22 @@ variable "bots" {
   }
 }
 
-variable "irc_server" {
-  description = "IRC server the bot connects to over TLS, preferring IPv6."
-  type = object({
+variable "irc_servers" {
+  description = "Servers of one IRC network, tried in order over TLS, preferring IPv6."
+  type = list(object({
     host = string
     port = number
-  })
+  }))
+
+  validation {
+    condition     = length(var.irc_servers) >= 1 && length(var.irc_servers) <= 50
+    error_message = "irc_servers must list between 1 and 50 servers."
+  }
+
+  validation {
+    condition     = length(distinct([for server in var.irc_servers : "${server.host}:${server.port}"])) == length(var.irc_servers)
+    error_message = "Each host:port pair in irc_servers must be unique."
+  }
 }
 
 variable "channels" {

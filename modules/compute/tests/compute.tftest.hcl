@@ -40,7 +40,7 @@ variables {
   nicks                   = ["naju", "zera"]
   bots                    = 2
   subnet_ipv6_cidr_blocks = ["2001:db8:1:0::/64", "2001:db8:1:1::/64"]
-  irc_server              = { host = "irc.example.net", port = 6697 }
+  irc_servers             = [{ host = "irc.example.net", port = 6697 }]
   channels                = { "#example" = { ops = ["alice", "bob"] }, "#second" = { ops = ["bob"] } }
   users                   = { alice = ["*!*alice@2001:db8:1:2??:*", "*!*alice@host.example"], bob = ["*!*bob@host.example"] }
   owner                   = "alice"
@@ -343,6 +343,45 @@ run "site_up_means_connected" {
   assert {
     condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "[set ::server-online]") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "if {![eggdrop_up]} {\n    return\n  }") && !strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "--value 0")
     error_message = "A connected bot publishes SiteUp 1 and a disconnected one publishes nothing, so the metric follows the group, not one bot's ops."
+  }
+}
+
+run "servers_are_listed_in_order" {
+  command = plan
+  variables {
+    irc_servers = [{ host = "a.example.net", port = 6697 }, { host = "b.example.net", port = 7000 }, { host = "c.example.net", port = 6697 }]
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "server add a.example.net +6697\nserver add b.example.net +7000\nserver add c.example.net +6697\n")
+    error_message = "Each server gets one server add line, in the order given."
+  }
+}
+
+run "empty_server_list_is_rejected" {
+  command = plan
+  variables {
+    irc_servers = []
+  }
+
+  expect_failures = [var.irc_servers]
+}
+
+run "duplicate_server_is_rejected" {
+  command = plan
+  variables {
+    irc_servers = [{ host = "a.example.net", port = 6697 }, { host = "a.example.net", port = 6697 }]
+  }
+
+  expect_failures = [var.irc_servers]
+}
+
+run "heartbeat_sends_group_size_with_site_up" {
+  command = plan
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "MetricName=SiteUp,Value=1 MetricName=GroupSize,Value=$size") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "[onchan $nick $channel]") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "foreach nick $eggdrop_nicks")
+    error_message = "The heartbeat must send SiteUp and GroupSize in one call, counting the listed nicks on the bot's channels."
   }
 }
 

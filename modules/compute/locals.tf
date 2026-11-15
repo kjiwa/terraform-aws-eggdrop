@@ -36,7 +36,7 @@ locals {
   boot_files = {
     "config/eggdrop.conf" = templatefile("${path.module}/files/eggdrop.conf.tftpl", {
       nicks               = var.nicks
-      irc_server          = var.irc_server
+      irc_servers         = var.irc_servers
       asg_name            = local.name
       lifecycle_hook_name = local.lifecycle_hook_name
     })

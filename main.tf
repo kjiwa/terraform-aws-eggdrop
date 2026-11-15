@@ -6,7 +6,7 @@ resource "random_password" "status_key" {
 module "network" {
   source = "./modules/network"
 
-  irc_port     = var.irc_server.port
+  irc_ports    = toset([for server in var.irc_servers : server.port])
   ipv4_enabled = var.ipv4_enabled
 }
 
@@ -20,7 +20,7 @@ module "compute" {
   spot_enabled            = var.spot_enabled
   nicks                   = var.nicks
   bots                    = var.bots
-  irc_server              = var.irc_server
+  irc_servers             = var.irc_servers
   channels                = var.channels
   users                   = var.users
   owner                   = var.owner
@@ -38,6 +38,7 @@ module "monitoring" {
   asg_name         = module.compute.asg_name
   alert_email      = var.alert_email
   metric_namespace = local.metric_namespace
+  bots             = var.bots
   active           = var.active
 }
 

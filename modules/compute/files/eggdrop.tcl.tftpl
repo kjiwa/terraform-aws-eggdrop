@@ -105,14 +105,33 @@ proc eggdrop_up {} {
   return [expr {[set ::server-online] > 0}]
 }
 
+# GroupSize counts the listed nicks present in any of the bot's channels, the
+# bot included. It falls below the bot count when a bot is down, split off or
+# on another network.
+proc eggdrop_group_size {} {
+  global eggdrop_nicks
+  set size 0
+  foreach nick $eggdrop_nicks {
+    foreach channel [channels] {
+      if {[onchan $nick $channel]} {
+        incr size
+        break
+      }
+    }
+  }
+  return $size
+}
+
 proc eggdrop_heartbeat {minute hour day month year} {
   global eggdrop_region eggdrop_namespace
   if {![eggdrop_up]} {
     return
   }
+  set size [eggdrop_group_size]
   catch {
     exec aws cloudwatch put-metric-data --region $eggdrop_region \
-      --namespace $eggdrop_namespace --metric-name SiteUp --value 1 \
+      --namespace $eggdrop_namespace \
+      --metric-data MetricName=SiteUp,Value=1 MetricName=GroupSize,Value=$size \
       > /dev/null 2> /dev/null &
   }
 }

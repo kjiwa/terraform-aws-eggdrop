@@ -18,6 +18,11 @@ variable "metric_namespace" {
   type        = string
 }
 
+variable "bots" {
+  description = "Number of bots that should share a channel; GroupSize below it for 20 minutes alarms."
+  type        = number
+}
+
 variable "active" {
   description = "If false the environment is asleep and the alarm-notification rule is disabled."
   type        = bool

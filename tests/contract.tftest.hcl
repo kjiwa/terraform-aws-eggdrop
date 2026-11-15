@@ -43,7 +43,7 @@ variables {
   domain_name = "example.com"
   zone_id     = "Z0000000000000TEST"
   alert_email = "ops@example.com"
-  irc_server  = { host = "irc.example.net" }
+  irc_servers = [{ host = "irc.example.net" }]
   channels    = { "#example" = { ops = ["alice"] } }
   users       = { alice = ["*!*alice@2001:db8:1:2??:*"] }
   owner       = "alice"
@@ -58,7 +58,7 @@ run "defaults_plan_with_the_required_inputs" {
   }
 
   assert {
-    condition     = join(",", var.nicks) == "eggdrop" && var.irc_server.port == 6697 && var.spot_enabled && var.active
+    condition     = join(",", var.nicks) == "eggdrop" && var.irc_servers[0].port == 6697 && var.spot_enabled && var.active
     error_message = "The nick, TLS port, Spot and active must default to eggdrop, 6697, true and true."
   }
 
@@ -84,6 +84,45 @@ run "owner_must_be_a_user" {
   }
 
   expect_failures = [var.owner]
+}
+
+run "irc_servers_must_not_be_empty" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    irc_servers = []
+  }
+
+  expect_failures = [var.irc_servers]
+}
+
+run "irc_servers_must_be_unique" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    irc_servers = [{ host = "irc.example.net" }, { host = "irc.example.net", port = 6697 }]
+  }
+
+  expect_failures = [var.irc_servers]
+}
+
+run "irc_servers_are_at_most_fifty" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    irc_servers = [for i in range(51) : { host = "irc${i}.example.net" }]
+  }
+
+  expect_failures = [var.irc_servers]
 }
 
 run "channels_must_not_be_empty" {
