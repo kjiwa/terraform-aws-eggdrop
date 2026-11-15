@@ -39,6 +39,11 @@ run "one_subnet_per_zone" {
     condition     = aws_ec2_instance_connect_endpoint.this.subnet_id == aws_subnet.this["us-west-2a"].id
     error_message = "The single instance connect endpoint sits in the first zone."
   }
+
+  assert {
+    condition     = output.subnet_ipv6_cidr_blocks == [for az in ["us-west-2a", "us-west-2b"] : aws_subnet.this[az].ipv6_cidr_block] && alltrue([for cidr in output.subnet_ipv6_cidr_blocks : can(regex("^([0-9a-f]{1,4}:){3}[0-9a-f]{1,4}::/64$", cidr))])
+    error_message = "Each subnet's /64 is output in zone order, with all four prefix groups printed."
+  }
 }
 
 run "ipv6_only_with_no_inbound_path" {

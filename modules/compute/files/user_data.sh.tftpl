@@ -105,7 +105,8 @@ fetch_config() {
   retry aws s3 cp "s3://$BUCKET/secret/status.key" "$HOME_DIR/status.key"
   retry aws s3 cp "s3://$BUCKET/config/eggdrop-spot-drain" /usr/local/bin/eggdrop-spot-drain
   retry aws s3 cp "s3://$BUCKET/config/eggdrop-config-sync" /usr/local/bin/eggdrop-config-sync
-  chmod 0755 /usr/local/bin/eggdrop-spot-drain /usr/local/bin/eggdrop-config-sync
+  retry aws s3 cp "s3://$BUCKET/config/eggdrop-ready" /usr/local/bin/eggdrop-ready
+  chmod 0755 /usr/local/bin/eggdrop-spot-drain /usr/local/bin/eggdrop-config-sync /usr/local/bin/eggdrop-ready
   chmod 0600 "$HOME_DIR/status.key"
   chown -R eggdrop "$HOME_DIR"
 }

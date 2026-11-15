@@ -40,6 +40,15 @@ data "aws_iam_policy_document" "instance" {
     resources = [aws_s3_bucket.this.arn]
   }
 
+  # The ARN is built from the literal names: the ASG's launch template embeds
+  # this policy's dependencies through user_data.
+  statement {
+    sid       = "CompleteLaunchHook"
+    effect    = "Allow"
+    actions   = ["autoscaling:CompleteLifecycleAction"]
+    resources = ["arn:aws:autoscaling:${data.aws_region.current.region}:${data.aws_caller_identity.default.account_id}:autoScalingGroup:*:autoScalingGroupName/${local.name}"]
+  }
+
   statement {
     sid       = "PublishHeartbeat"
     effect    = "Allow"

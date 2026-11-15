@@ -1,7 +1,12 @@
 data "aws_region" "current" {}
+data "aws_caller_identity" "default" {}
 
 locals {
   name = "eggdrop"
+
+  # Literal, not read from the ASG and hook: user_data embeds config_hash,
+  # which hashes the boot files that name them.
+  lifecycle_hook_name = "launching"
 
   # Burstable nano and micro types only: the bot needs megabytes, and any
   # larger family costs many times a nano. The ASG draws from every type in
@@ -24,14 +29,21 @@ locals {
     ]
   ])
 
+  # Address only: only bots run in these subnets, and a claimed nick never
+  # matches the ident fixed at connect.
+  peer_masks = [for cidr in var.subnet_ipv6_cidr_blocks : "*!*@${trimsuffix(cidr, "::/64")}:*"]
+
   boot_files = {
     "config/eggdrop.conf" = templatefile("${path.module}/files/eggdrop.conf.tftpl", {
-      nick       = var.nick
-      irc_server = var.irc_server
+      nicks               = var.nicks
+      irc_server          = var.irc_server
+      asg_name            = local.name
+      lifecycle_hook_name = local.lifecycle_hook_name
     })
     "config/eggdrop-token"       = file("${path.module}/files/eggdrop-token.py")
     "config/eggdrop-spot-drain"  = file("${path.module}/files/spot-drain.sh")
     "config/eggdrop-config-sync" = file("${path.module}/files/config-sync.sh")
+    "config/eggdrop-ready"       = file("${path.module}/files/ready.sh")
   }
 
   # The roster: channels, users and owner. The running bot picks changes up
@@ -44,6 +56,7 @@ locals {
       channels         = sort(keys(var.channels))
       channel_ops      = local.channel_ops
       users            = var.users
+      peer_masks       = local.peer_masks
       owner            = var.owner
     })
   }

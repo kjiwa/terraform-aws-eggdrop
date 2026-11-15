@@ -5,11 +5,11 @@ resource "aws_autoscaling_group" "this" {
   # Terraform infers no ordering from the launch template to the policy.
   depends_on = [aws_iam_role_policy.instance, aws_s3_object.config, aws_s3_object.status_key]
 
-  min_size            = var.active ? 1 : 0
-  max_size            = var.active ? 1 : 0
-  desired_capacity    = var.active ? 1 : 0
+  min_size            = var.active ? var.bots : 0
+  max_size            = var.active ? var.bots + 1 : 0
+  desired_capacity    = var.active ? var.bots : 0
   vpc_zone_identifier = var.subnet_ids
-  capacity_rebalance  = false
+  capacity_rebalance  = true
 
   mixed_instances_policy {
     launch_template {
@@ -54,7 +54,21 @@ resource "aws_autoscaling_group" "this" {
   instance_refresh {
     strategy = "Rolling"
     preferences {
-      min_healthy_percentage = 0
+      min_healthy_percentage = 100
+      max_healthy_percentage = 100 + ceil(100 / var.bots)
+      skip_matching          = true
+      instance_warmup        = 60
     }
   }
+}
+
+# A separate resource, not initial_lifecycle_hook, which the provider applies
+# only when the ASG is created and so would never reach the existing group. On
+# a first create the first instances can launch before the hook exists.
+resource "aws_autoscaling_lifecycle_hook" "launching" {
+  name                   = local.lifecycle_hook_name
+  autoscaling_group_name = aws_autoscaling_group.this.name
+  lifecycle_transition   = "autoscaling:EC2_INSTANCE_LAUNCHING"
+  heartbeat_timeout      = 3600
+  default_result         = "ABANDON"
 }

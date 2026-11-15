@@ -13,20 +13,22 @@ module "network" {
 module "compute" {
   source = "./modules/compute"
 
-  subnet_ids       = module.network.subnet_ids
-  app_sg_id        = module.network.app_sg_id
-  active           = var.active
-  spot_enabled     = var.spot_enabled
-  nick             = var.nick
-  irc_server       = var.irc_server
-  channels         = var.channels
-  users            = var.users
-  owner            = var.owner
-  eggdrop          = var.eggdrop
-  image_ids        = var.image_ids
-  domain_name      = var.domain_name
-  metric_namespace = local.metric_namespace
-  status_key       = random_password.status_key.result
+  subnet_ids              = module.network.subnet_ids
+  subnet_ipv6_cidr_blocks = module.network.subnet_ipv6_cidr_blocks
+  app_sg_id               = module.network.app_sg_id
+  active                  = var.active
+  spot_enabled            = var.spot_enabled
+  nicks                   = var.nicks
+  bots                    = var.bots
+  irc_server              = var.irc_server
+  channels                = var.channels
+  users                   = var.users
+  owner                   = var.owner
+  eggdrop                 = var.eggdrop
+  image_ids               = var.image_ids
+  domain_name             = var.domain_name
+  metric_namespace        = local.metric_namespace
+  status_key              = random_password.status_key.result
 }
 
 module "monitoring" {

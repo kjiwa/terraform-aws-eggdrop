@@ -58,8 +58,13 @@ run "defaults_plan_with_the_required_inputs" {
   }
 
   assert {
-    condition     = var.nick == "eggdrop" && var.irc_server.port == 6697 && var.spot_enabled && var.active
+    condition     = join(",", var.nicks) == "eggdrop" && var.irc_server.port == 6697 && var.spot_enabled && var.active
     error_message = "The nick, TLS port, Spot and active must default to eggdrop, 6697, true and true."
+  }
+
+  assert {
+    condition     = var.bots == 1
+    error_message = "One bot by default."
   }
 
   assert {
@@ -153,10 +158,23 @@ run "nick_cannot_carry_tcl_substitution" {
     aws.us_east_1 = aws.us_east_1
   }
   variables {
-    nick = "bot[1]"
+    nicks = ["bot[1]"]
   }
 
-  expect_failures = [var.nick]
+  expect_failures = [var.nicks]
+}
+
+run "every_nick_needs_a_bot" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    nicks = ["naju", "zera"]
+  }
+
+  expect_failures = [var.bots]
 }
 
 run "channel_cannot_carry_tcl_substitution" {

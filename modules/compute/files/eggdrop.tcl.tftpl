@@ -32,6 +32,13 @@ proc eggdrop_load_users {type} {
       setuser $handle HOSTS $mask
     }
   }
+  adduser peers [lindex {${join(" ", peer_masks)}} 0]
+  foreach mask [lrange {${join(" ", peer_masks)}} 1 end] {
+    setuser peers HOSTS $mask
+  }
+  foreach channel {${join(" ", channels)}} {
+    chattr peers |+fao $channel
+  }
   foreach {handle channel} {
 %{ for grant in channel_ops ~}
     {${grant.handle}} {${grant.channel}}
@@ -41,6 +48,30 @@ proc eggdrop_load_users {type} {
   }
 }
 bind evnt - userfile-loaded eggdrop_load_users
+
+# A reload re-matches members lazily and rechecks nothing, so members who now
+# match the roster are opped here once it has settled.
+proc eggdrop_op_members {} {
+  foreach channel [channels] {
+    if {![botisop $channel]} {
+      continue
+    }
+    foreach nick [chanlist $channel] {
+      if {[isop $nick $channel]} {
+        continue
+      }
+      set handle [nick2hand $nick $channel]
+      if {[matchattr $handle |o $channel] && [matchattr $handle |a $channel]} {
+        pushmode $channel +o $nick
+      }
+    }
+  }
+}
+
+proc eggdrop_schedule_op_members {type} {
+  utimer 5 eggdrop_op_members
+}
+bind evnt - userfile-loaded eggdrop_schedule_op_members
 
 set eggdrop_channels {
 %{ for channel in channels ~}
@@ -67,18 +98,21 @@ channel add ${channel} {
 channel set ${channel} +protectops
 %{ endfor ~}
 
-# SiteUp is 1 while the bot is registered with the IRC server. server-online
-# holds the time of the server's welcome, and 0 while disconnected; a bot that
-# is down publishes nothing, which the alarm reads as down too.
+# server-online holds the time of the server's welcome, and 0 while
+# disconnected. A connected bot publishes SiteUp 1 and a disconnected one
+# publishes nothing, so the Minimum statistic is 1 while any bot is connected.
 proc eggdrop_up {} {
   return [expr {[set ::server-online] > 0}]
 }
 
 proc eggdrop_heartbeat {minute hour day month year} {
   global eggdrop_region eggdrop_namespace
+  if {![eggdrop_up]} {
+    return
+  }
   catch {
     exec aws cloudwatch put-metric-data --region $eggdrop_region \
-      --namespace $eggdrop_namespace --metric-name SiteUp --value [eggdrop_up] \
+      --namespace $eggdrop_namespace --metric-name SiteUp --value 1 \
       > /dev/null 2> /dev/null &
   }
 }

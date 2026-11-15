@@ -1,10 +1,26 @@
 # Changelog
 
-## Unreleased
+## v0.4.0
 
 ### Changed
 
-- The `irc_server` and `irc_port` descriptions, the README intro and the network comments now say IPv4 is available with `ipv4_enabled`, and that the instance has no Session Manager access because its role grants none. The Eggdrop config comment changed too, which alters `config_hash`, so the next release replaces the instance.
+- `nick` is now `nicks`, a list. Every bot boots as the first and claims the first free name in the list.
+- `SiteUp` is 1 while any bot is connected to the IRC server, ops or not. A disconnected bot publishes nothing, where it published 0.
+- The `irc_server` and `irc_port` descriptions, the README intro and the network comments now say IPv4 is available with `ipv4_enabled`, and that the instance has no Session Manager access because its role grants none.
+- A refresh adds one bot before it retires one, and each new bot waits in `Pending:Wait` until it is in its channels. Capacity rebalancing is on. Status page modules at v0.7.2.
+
+### Added
+
+- `bots`: how many bots the group runs, at least the number of `nicks`.
+- A launch hook and the `eggdrop-ready` script that completes it, with the IAM permission to do so.
+- The `peers` handle: each subnet's `/64` is opped in every channel, so the bots op each other. `network` outputs `subnet_ipv6_cidr_blocks`.
+- After a roster reload, members who now match are opped without rejoining.
+
+### Upgrade
+
+- Rename `nick` to `nicks` (for example `["naju", "zera"]`) and set `bots`.
+- The apply refreshes the bots one at a time: the old bot gets the `peers` grant in place, each new bot joins and is opped by it, and the old bot goes last.
+- The refresh can start before the hook exists. Create it first with `aws autoscaling put-lifecycle-hook --auto-scaling-group-name eggdrop --lifecycle-hook-name launching --lifecycle-transition autoscaling:EC2_INSTANCE_LAUNCHING --heartbeat-timeout 3600 --default-result ABANDON`, or accept one refresh without the gate.
 
 ## v0.3.0
 
