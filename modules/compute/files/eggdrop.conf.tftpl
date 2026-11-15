@@ -43,26 +43,46 @@ proc eggdrop_init_server {type} {
   putquick "MODE $botnick +i"
 }
 
-# Every bot boots as the first nick. One that holds no listed name tries the
-# next each minute; set nick also moves keep-nick's target to the claimed name.
+# Every bot boots as the first nick. One that holds no listed name claims the
+# first listed name no one in its channels wears; set nick also moves
+# keep-nick's target to the claimed name.
 proc eggdrop_claim_nick {minute hour day month year} {
   global eggdrop_nicks botnick
   if {![eggdrop_up] || [lsearch -exact -nocase $eggdrop_nicks $botnick] >= 0} {
     return
   }
-  set ::nick [lindex $eggdrop_nicks [expr {int($minute) % [llength $eggdrop_nicks]}]]
+  foreach channel [channels] {
+    if {![botonchan $channel]} {
+      return
+    }
+  }
+  foreach name $eggdrop_nicks {
+    set taken 0
+    foreach channel [channels] {
+      if {[onchan $name $channel]} {
+        set taken 1
+      }
+    }
+    if {!$taken} {
+      set ::nick $name
+      return
+    }
+  }
 }
 bind time - "* * * * *" eggdrop_claim_nick
 
 # Releases this instance's launch hook once the bot is in every channel, or
-# 300 s after connecting. The guard keeps a rehash from running it again.
+# 300 s after connecting. The guard keeps a rehash from running it again. A
+# failed call is retried a few times: an instance that is no longer waiting
+# (long-running, or launched before the hook existed) never succeeds.
 if {![info exists eggdrop_ready_sent]} {
   set eggdrop_ready_sent 0
+  set eggdrop_ready_failures 0
 }
 
 proc eggdrop_release_launch {minute hour day month year} {
-  global eggdrop_ready_sent
-  if {$eggdrop_ready_sent || ![eggdrop_up]} {
+  global eggdrop_ready_sent eggdrop_ready_failures
+  if {$eggdrop_ready_sent || $eggdrop_ready_failures >= 5 || ![eggdrop_up]} {
     return
   }
   set joined 1
@@ -77,6 +97,7 @@ proc eggdrop_release_launch {minute hour day month year} {
   set eggdrop_ready_sent 1
   if {[catch {exec /usr/local/bin/eggdrop-ready ${asg_name} ${lifecycle_hook_name}} err]} {
     set eggdrop_ready_sent 0
+    incr eggdrop_ready_failures
     putlog "eggdrop-ready failed: $err"
   }
 }

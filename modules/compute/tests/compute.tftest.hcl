@@ -327,6 +327,11 @@ run "bots_claim_the_listed_nicks" {
   }
 
   assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "onchan $name $channel") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "eggdrop_ready_failures >= 5")
+    error_message = "A bot claims only a name no one wears, and gives up releasing a launch hook that never completes."
+  }
+
+  assert {
     condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "eggdrop-ready ${local.name} ${local.lifecycle_hook_name}")
     error_message = "The bot must release its own launch hook."
   }

@@ -18,7 +18,10 @@ main() {
     return 2
   fi
   _main_instance_id="$(imds_get instance-id)"
+  # Eggdrop runs this synchronously, so a stalled API call must not hold up
+  # its PING replies.
   aws autoscaling complete-lifecycle-action \
+    --cli-connect-timeout 5 --cli-read-timeout 10 \
     --lifecycle-action-result CONTINUE \
     --lifecycle-hook-name "$2" \
     --auto-scaling-group-name "$1" \

@@ -41,7 +41,7 @@ export PATH
 : >"$AWS_LOG"
 assert_status "success exits 0" 0 sh "$READY" eggdrop launching
 assert_eq "completes this instance's hook" \
-  "autoscaling complete-lifecycle-action --lifecycle-action-result CONTINUE --lifecycle-hook-name launching --auto-scaling-group-name eggdrop --instance-id i-0123456789abcdef0" \
+  "autoscaling complete-lifecycle-action --cli-connect-timeout 5 --cli-read-timeout 10 --lifecycle-action-result CONTINUE --lifecycle-hook-name launching --auto-scaling-group-name eggdrop --instance-id i-0123456789abcdef0" \
   "$(cat "$AWS_LOG")"
 
 : >"$AWS_LOG"
