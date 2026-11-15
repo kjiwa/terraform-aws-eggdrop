@@ -24,9 +24,13 @@ locals {
     ]
   ])
 
+  # Address only: only bots run in these subnets, and a claimed nick never
+  # matches the ident fixed at connect.
+  peer_masks = [for cidr in var.subnet_ipv6_cidr_blocks : "*!*@${trimsuffix(cidr, "::/64")}:*"]
+
   boot_files = {
     "config/eggdrop.conf" = templatefile("${path.module}/files/eggdrop.conf.tftpl", {
-      nick       = var.nick
+      nicks      = var.nicks
       irc_server = var.irc_server
     })
     "config/eggdrop-token"       = file("${path.module}/files/eggdrop-token.py")
@@ -44,6 +48,7 @@ locals {
       channels         = sort(keys(var.channels))
       channel_ops      = local.channel_ops
       users            = var.users
+      peer_masks       = local.peer_masks
       owner            = var.owner
     })
   }

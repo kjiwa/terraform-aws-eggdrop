@@ -33,19 +33,21 @@ override_resource {
 }
 
 variables {
-  subnet_ids       = ["subnet-0123456789abcdef0", "subnet-0123456789abcdef1"]
-  app_sg_id        = "sg-0123456789abcdef0"
-  active           = true
-  spot_enabled     = true
-  nick             = "eggdrop"
-  irc_server       = { host = "irc.example.net", port = 6697 }
-  channels         = { "#example" = { ops = ["alice", "bob"] }, "#second" = { ops = ["bob"] } }
-  users            = { alice = ["*!*alice@2001:db8:1:2??:*", "*!*alice@host.example"], bob = ["*!*bob@host.example"] }
-  owner            = "alice"
-  eggdrop          = { version = "1.10.2", sha256 = "d6646b630879e1acd9b053ffa12f46667f907145f29af1df0f82749ef3032a94" }
-  domain_name      = "example.com"
-  metric_namespace = "Eggdrop"
-  status_key       = "0123456789"
+  subnet_ids              = ["subnet-0123456789abcdef0", "subnet-0123456789abcdef1"]
+  app_sg_id               = "sg-0123456789abcdef0"
+  active                  = true
+  spot_enabled            = true
+  nicks                   = ["eggdrop"]
+  bots                    = 1
+  subnet_ipv6_cidr_blocks = ["2001:db8:1:0::/64", "2001:db8:1:1::/64"]
+  irc_server              = { host = "irc.example.net", port = 6697 }
+  channels                = { "#example" = { ops = ["alice", "bob"] }, "#second" = { ops = ["bob"] } }
+  users                   = { alice = ["*!*alice@2001:db8:1:2??:*", "*!*alice@host.example"], bob = ["*!*bob@host.example"] }
+  owner                   = "alice"
+  eggdrop                 = { version = "1.10.2", sha256 = "d6646b630879e1acd9b053ffa12f46667f907145f29af1df0f82749ef3032a94" }
+  domain_name             = "example.com"
+  metric_namespace        = "Eggdrop"
+  status_key              = "0123456789"
 }
 
 run "instance_contract" {
