@@ -15,7 +15,8 @@ set admin "${nick}"
 set network "EFnet"
 set net-type "EFnet"
 
-# The subnet has no IPv4 path to the internet.
+# IPv4 is routed only with ipv4_enabled. Takes the AAAA record when the server
+# has one, else the A record.
 set prefer-ipv6 1
 server add ${irc_server.host} +${irc_server.port}
 

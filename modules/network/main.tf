@@ -77,7 +77,7 @@ resource "aws_route" "ipv6_egress" {
   egress_only_gateway_id      = aws_egress_only_internet_gateway.this.id
 }
 
-# With no IPv4 path, this is how the instance reaches S3 (the Eggdrop tarball,
+# With no IPv4 HTTPS egress, this is how the instance reaches S3 (the Eggdrop tarball,
 # config) and the S3-hosted dnf mirrors.
 resource "aws_vpc_endpoint" "s3" {
   vpc_id            = aws_vpc.this.id

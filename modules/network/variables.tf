@@ -1,5 +1,5 @@
 variable "irc_port" {
-  description = "TCP port the IRC server listens on for TLS. The app security group allows egress to it over IPv6."
+  description = "TCP port the IRC server listens on for TLS. The app security group allows egress to it over IPv6, and over IPv4 when ipv4_enabled."
   type        = number
 }
 

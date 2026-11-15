@@ -229,7 +229,7 @@ run "rendered_config" {
 
   assert {
     condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "server add irc.example.net +6697") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set prefer-ipv6 1")
-    error_message = "The server must be reached over TLS and IPv6."
+    error_message = "The server must be reached over TLS, preferring IPv6."
   }
 
   assert {

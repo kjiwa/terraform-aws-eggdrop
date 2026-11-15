@@ -1,6 +1,6 @@
 # terraform-aws-eggdrop
 
-Terraform module for a stateless [Eggdrop](https://www.eggheads.org/) IRC bot on an IPv6-only AWS Spot instance, with a status page.
+Terraform module for a stateless [Eggdrop](https://www.eggheads.org/) IRC bot on an AWS Spot instance, IPv6-only by default, with a status page.
 
 The bot holds ops in your channels and ops the users you list when they join. It exists for networks without ChanServ, where a channel keeps its ops only while someone with ops stays in it: run it next to a client that fails independently (a different region, instance family and server), and each re-ops the other when it reconnects.
 
