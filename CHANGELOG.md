@@ -4,7 +4,7 @@
 
 ### Changed
 
-- With more than one `irc_servers` entry, the bot wearing `nicks[i]` moves to `irc_servers[i mod length]`, so one server's outage leaves the other bot opped. Each bot jumps at most once per claimed name, and only while another listed bot is opped in every channel. With one entry the rendered config is unchanged. A bot with no listed name stays where it is.
+- With more than one `irc_servers` entry, the bot wearing `nicks[i]` moves to `irc_servers[i mod length]`, so one server's outage leaves the other bot opped. Bots jump on staggered minutes (the minute modulo the bot count equals the slot), at most once per 30 minutes, and only while another listed bot is opped in every channel (at least one); a bot that failed over returns to its slot server after the gate. With one entry the rendered config is unchanged. A bot with no listed name stays where it is.
 - Status page modules at v0.8.0.
 
 ### Upgrade

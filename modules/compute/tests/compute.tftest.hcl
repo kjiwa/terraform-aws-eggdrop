@@ -370,8 +370,8 @@ run "servers_are_taken_by_nick_slot" {
   }
 
   assert {
-    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "proc eggdrop_take_server") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "string equal -nocase $::serveraddress \"$host:$port\"") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "bind time - \"* * * * *\" eggdrop_take_server")
-    error_message = "The slot proc runs each minute and compares serveraddress ignoring case."
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "proc eggdrop_take_server") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "string equal -nocase $::serveraddress \"$host:$port\"") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "bind time - \"* * * * *\" eggdrop_take_server") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "[scan $minute %d] % [llength $eggdrop_nicks] != $slot") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "[llength [channels]] == 0") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "[unixtime] - $eggdrop_moved_at < 1800") && !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "eggdrop_moved_for")
+    error_message = "The slot proc runs each minute, staggers by slot, gates on time and channels, and compares serveraddress ignoring case."
   }
 }
 
