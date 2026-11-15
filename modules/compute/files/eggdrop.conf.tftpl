@@ -29,6 +29,10 @@ set prefer-ipv6 1
 server add ${server.host} +${server.port}
 %{ endfor ~}
 
+%{ if length(irc_servers) > 1 ~}
+set eggdrop_servers {%{ for server in irc_servers } {${server.host} +${server.port}}%{ endfor } }
+
+%{ endif ~}
 set userfile "eggdrop.user"
 set chanfile "eggdrop.chan"
 set help-path "help/"
@@ -73,6 +77,46 @@ proc eggdrop_claim_nick {minute hour day month year} {
 }
 bind time - "* * * * *" eggdrop_claim_nick
 
+%{ if length(irc_servers) > 1 ~}
+# The bot wearing eggdrop_nicks[i] belongs on eggdrop_servers[i mod length], so
+# one server outage leaves the other bots opped. A bot jumps at most once per
+# name, and only while another listed bot is opped in every channel: moving
+# never drops the last op. After the jump Eggdrop cycles on from the new entry,
+# so a down slot server does not make it flap.
+if {![info exists eggdrop_moved_for]} {
+  set eggdrop_moved_for ""
+}
+
+proc eggdrop_take_server {minute hour day month year} {
+  global eggdrop_nicks eggdrop_servers eggdrop_moved_for botnick
+  set slot [lsearch -exact -nocase $eggdrop_nicks $botnick]
+  if {![eggdrop_up] || $slot < 0 || $eggdrop_moved_for eq $botnick} {
+    return
+  }
+  lassign [lindex $eggdrop_servers [expr {$slot % [llength $eggdrop_servers]}]] host port
+  if {[string equal -nocase $::serveraddress "$host:$port"]} {
+    return
+  }
+  foreach peer $eggdrop_nicks {
+    if {[string equal -nocase $peer $botnick]} {
+      continue
+    }
+    set opped 1
+    foreach channel [channels] {
+      if {![isop $peer $channel]} {
+        set opped 0
+      }
+    }
+    if {$opped} {
+      set eggdrop_moved_for $botnick
+      jump $host $port
+      return
+    }
+  }
+}
+bind time - "* * * * *" eggdrop_take_server
+
+%{ endif ~}
 # Releases this instance's launch hook once the bot is in every channel, or
 # 300 s after connecting. The guard keeps a rehash from running it again. A
 # failed call is retried a few times: an instance that is no longer waiting

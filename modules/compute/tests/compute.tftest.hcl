@@ -358,6 +358,32 @@ run "servers_are_listed_in_order" {
   }
 }
 
+run "servers_are_taken_by_nick_slot" {
+  command = plan
+  variables {
+    irc_servers = [{ host = "a.example.net", port = 6697 }, { host = "b.example.net", port = 7000 }]
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set eggdrop_servers { {a.example.net +6697} {b.example.net +7000} }")
+    error_message = "eggdrop_servers lists the servers in the order given."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "proc eggdrop_take_server") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "string equal -nocase $::serveraddress \"$host:$port\"") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "bind time - \"* * * * *\" eggdrop_take_server")
+    error_message = "The slot proc runs each minute and compares serveraddress ignoring case."
+  }
+}
+
+run "one_server_has_no_slot_proc" {
+  command = plan
+
+  assert {
+    condition     = !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "eggdrop_servers") && !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "eggdrop_take_server")
+    error_message = "With one server there is nowhere to move, so neither the list nor the proc is rendered."
+  }
+}
+
 run "empty_server_list_is_rejected" {
   command = plan
   variables {
