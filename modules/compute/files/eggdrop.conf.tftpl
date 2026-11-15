@@ -49,4 +49,32 @@ proc eggdrop_claim_nick {minute hour day month year} {
 }
 bind time - "* * * * *" eggdrop_claim_nick
 
+# Releases this instance's launch hook once the bot is in every channel, or
+# 300 s after connecting. The guard keeps a rehash from running it again.
+if {![info exists eggdrop_ready_sent]} {
+  set eggdrop_ready_sent 0
+}
+
+proc eggdrop_release_launch {minute hour day month year} {
+  global eggdrop_ready_sent
+  if {$eggdrop_ready_sent || ![eggdrop_up]} {
+    return
+  }
+  set joined 1
+  foreach channel [channels] {
+    if {![botonchan $channel]} {
+      set joined 0
+    }
+  }
+  if {!$joined && [unixtime] - [set ::server-online] < 300} {
+    return
+  }
+  set eggdrop_ready_sent 1
+  if {[catch {exec /usr/local/bin/eggdrop-ready ${asg_name} ${lifecycle_hook_name}} err]} {
+    set eggdrop_ready_sent 0
+    putlog "eggdrop-ready failed: $err"
+  }
+}
+bind time - "* * * * *" eggdrop_release_launch
+
 source scripts/eggdrop.tcl
