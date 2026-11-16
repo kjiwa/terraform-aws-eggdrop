@@ -531,7 +531,7 @@ run "boot_survives_a_missing_instance_id" {
   }
 
   assert {
-    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "proc eggdrop_instance_id") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "if {$instance_id eq \"\"} {") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "if {$instance_id eq \"\"} {")
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "proc eggdrop_instance_id") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "if {$instance_id eq \"\"} {") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "if {$instance_id eq \"\" ||")
     error_message = "The server event log and the snapshot must skip when the instance id is empty."
   }
 }
@@ -643,5 +643,48 @@ run "bot_bucket_is_private" {
   assert {
     condition     = aws_s3_object.status_key.key == "secret/status.key" && aws_s3_object.status_key.server_side_encryption == "AES256"
     error_message = "The status key must be stored encrypted."
+  }
+}
+
+run "server_probe_is_installed_and_bound" {
+  command = plan
+
+  assert {
+    condition     = contains(keys(local.boot_files), "config/eggdrop-probe") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "config/eggdrop-probe\" \"$HOME_DIR/eggdrop-probe\"")
+    error_message = "The probe is a boot file, fetched next to the token minter."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "bind time - \"* * * * *\" eggdrop_probe_servers") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "python3 /opt/eggdrop/eggdrop-probe $eggdrop_probe_file {*}$entries")
+    error_message = "A minute bind runs the probe."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "> /dev/null 2> /dev/null &") && !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "JOIN")
+    error_message = "The probe runs in the background, so PING replies are not blocked, and joins nothing."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "$now - [set ::server-online] < 600") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "[file mtime $eggdrop_probe_file] < 86400") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "[scan $minute %d] % [llength $eggdrop_nicks] != [eggdrop_slot]")
+    error_message = "A probe starts 10 min after the welcome, on the bot's slot minute, when the last is a day old."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set server-timeout 20")
+    error_message = "A dead server entry must cost 20 s, not Eggdrop's default 60."
+  }
+}
+
+run "roster_script_stubs_what_an_older_conf_lacks" {
+  command = plan
+
+  assert {
+    condition     = alltrue([for symbol in ["eggdrop_on_slot_server", "eggdrop_instance_id", "eggdrop_json_string", "eggdrop_probes_json"] : strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "  ${symbol} {return")]) && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "if {![info exists eggdrop_nicks]}")
+    error_message = "The roster script runs on bots whose conf is a release older, so each conf symbol it uses needs a stub."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "![info exists ::env(EGGDROP_BUCKET)]")
+    error_message = "A bot launched before the bucket was in its environment writes no snapshot."
   }
 }

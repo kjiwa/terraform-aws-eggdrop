@@ -21,12 +21,17 @@ _key = None
 
 # The bot rewrites its snapshot at least every 900 s.
 SNAPSHOT_STALE_SECONDS = 1200
-EVENT_WINDOW_SECONDS = 24 * 3600
+# Newest first: a row shows only the last accept and failure per server, so
+# most servers are settled by the first window and the rest cost no reads.
+EVENT_WINDOWS = (
+    ("1 h", 0, 3600),
+    ("1-6 h", 3600, 6 * 3600),
+    ("6-24 h", 6 * 3600, 24 * 3600),
+)
 FAILURE_EVENTS = ("failed", "refused")
 EVENT_KINDS = ("accepted", *FAILURE_EVENTS)
 EVENT_PATTERN = " ".join(f"?{kind}" for kind in EVENT_KINDS)
 EVENT_MAX_PAGES = 5
-EVENT_MAX_EVENTS = 2000
 BOT_STATES = ("InService", "Pending:Wait", "Pending:Proceed")
 
 
@@ -109,30 +114,51 @@ def instance_row(s3, instance_id, now):
     return bot_row(instance_id, snapshot, now)
 
 
-def bots(now=None):
-    now = time.time() if now is None else now
+def bot_instance_ids():
     asg = boto3.client("autoscaling").describe_auto_scaling_groups(
         AutoScalingGroupNames=[os.environ["ASG_NAME"]]
     )["AutoScalingGroups"]
-    s3 = boto3.client("s3")
-    rows = [
-        instance_row(s3, instance["InstanceId"], now)
+    return [
+        instance["InstanceId"]
         for group in asg
         for instance in group["Instances"]
         if instance["LifecycleState"] in BOT_STATES
     ]
+
+
+def bots(now=None):
+    now = time.time() if now is None else now
+    s3 = boto3.client("s3")
+    rows = [instance_row(s3, instance_id, now) for instance_id in bot_instance_ids()]
     return {"title": "Bots", "rows": rows}
 
 
-def read_events(logs, start_ms):
-    """Event kinds only, at most EVENT_MAX_PAGES pages and EVENT_MAX_EVENTS
-    events; the flag says whether more remained."""
+def newest_probes():
+    """Per server, the newest probe of any bot: (finished at, result)."""
+    s3 = boto3.client("s3")
+    newest = {}
+    for instance_id in bot_instance_ids():
+        try:
+            snapshot = read_snapshot(s3, os.environ["BOT_BUCKET"], instance_id)
+        except botocore.exceptions.ClientError:
+            continue
+        probes = (snapshot or {}).get("probes") or {}
+        for address, result in probes.get("results", {}).items():
+            if address not in newest or probes["at"] > newest[address][0]:
+                newest[address] = (probes["at"], result)
+    return newest
+
+
+def read_window(logs, start_ms, end_ms):
+    """Event kinds only, oldest first; the flag says whether more remained
+    after EVENT_MAX_PAGES pages."""
     events = []
     token = None
     for _ in range(EVENT_MAX_PAGES):
         arguments = {
             "logGroupName": os.environ["IRC_LOG_GROUP"],
             "startTime": start_ms,
+            "endTime": end_ms,
             "filterPattern": EVENT_PATTERN,
         }
         if token:
@@ -142,17 +168,59 @@ def read_events(logs, start_ms):
         token = page.get("nextToken")
         if not token:
             return events, False
-        if len(events) >= EVENT_MAX_EVENTS:
+    return events, True
+
+
+def parse_event(message):
+    kind, _, rest = message.partition(" ")
+    target, _, text = rest.partition(" ")
+    return kind, target.lower(), text
+
+
+def settled(addresses, events):
+    """Whether every address has an accept and a failure among the events."""
+    seen = set()
+    for _, message in events:
+        kind, target, _ = parse_event(message)
+        if kind == "accepted":
+            seen.add((target, "accepted"))
+        elif kind in FAILURE_EVENTS:
+            seen.add((target, "failure"))
+    return all(
+        (address.lower(), outcome) in seen
+        for address in addresses
+        for outcome in ("accepted", "failure")
+    )
+
+
+def read_events(logs, now, addresses):
+    """Windows newest first, until every address has an accept and a failure.
+    Returns the events oldest first and the windows that hit the page cap."""
+    events = []
+    capped = []
+    for label, newer, older in EVENT_WINDOWS:
+        window, hit_cap = read_window(
+            logs, int((now - older) * 1000), int((now - newer) * 1000)
+        )
+        events = window + events
+        if hit_cap:
+            capped.append(label)
+        if settled(addresses, events):
             break
-    return events[:EVENT_MAX_EVENTS], True
+    return events, capped
 
 
-def server_row(address, events, truncated):
+def probe_text(probe):
+    at, result = probe
+    outcome = f"ok {result['seconds']:.1f} s" if result["ok"] else result["error"]
+    return f"probe {outcome} {clock(at)}"
+
+
+def server_row(address, events, capped, probe=None):
     accepted = failure = None
     for seconds, message in events:
-        kind, _, rest = message.partition(" ")
-        target, _, text = rest.partition(" ")
-        if target.lower() != address.lower():
+        kind, target, text = parse_event(message)
+        if target != address.lower():
             continue
         if kind == "accepted":
             accepted = seconds
@@ -162,8 +230,10 @@ def server_row(address, events, truncated):
     if failure:
         seconds, kind, text = failure
         captions.append(f"last {kind} {clock(seconds)}: {text}")
-    if truncated:
-        captions.append("truncated")
+    if probe:
+        captions.append(probe_text(probe))
+    if capped:
+        captions.append(f"truncated in {', '.join(capped)}")
     row = {
         "label": address,
         "value": f"accepted {clock(accepted)}" if accepted else "no accept in 24 h",
@@ -175,14 +245,15 @@ def server_row(address, events, truncated):
 
 def servers(now=None):
     now = time.time() if now is None else now
-    events, truncated = read_events(
-        boto3.client("logs"), int((now - EVENT_WINDOW_SECONDS) * 1000)
-    )
-    events.sort(key=lambda event: event[0])
     addresses = json.loads(os.environ["IRC_SERVERS"])
+    events, capped = read_events(boto3.client("logs"), now, addresses)
+    probes = newest_probes()
     return {
         "title": "Servers",
-        "rows": [server_row(address, events, truncated) for address in addresses],
+        "rows": [
+            server_row(address, events, capped, probes.get(address))
+            for address in addresses
+        ],
     }
 
 

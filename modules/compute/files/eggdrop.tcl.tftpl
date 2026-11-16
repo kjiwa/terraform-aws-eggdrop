@@ -6,6 +6,25 @@ set eggdrop_domain "${domain_name}"
 set eggdrop_owner "${owner}"
 set eggdrop_token_ttl 43200
 
+# This script is applied to a running bot, whose conf is older. Each symbol the
+# conf defines and this script uses is stubbed when the conf lacks it, so the
+# heartbeat keeps publishing. A stub leaves out only what the old conf cannot
+# supply: no instance id means no snapshot and no probes.
+if {![info exists eggdrop_nicks]} {
+  set eggdrop_nicks {}
+}
+foreach {eggdrop_name eggdrop_body} {
+  eggdrop_on_slot_server {return 1}
+  eggdrop_instance_id {return ""}
+  eggdrop_json_string {return "\"\""}
+  eggdrop_probes_json {return "\{\}"}
+} {
+  if {![llength [info procs $eggdrop_name]]} {
+    proc $eggdrop_name {args} $eggdrop_body
+  }
+}
+unset eggdrop_name eggdrop_body
+
 # Answer only the status command: every other built-in /msg command is
 # unbound, so a stranger's message gets no response.
 foreach eggdrop_bind [binds msg] {
@@ -159,7 +178,7 @@ proc eggdrop_snapshot_body {with_members} {
     lappend channels [eggdrop_channel_json $channel $with_members]
   }
   set online [set ::server-online]
-  return "\"nick\":[eggdrop_json_string $::botnick],\"botname\":[eggdrop_json_string $::botname],\"server_entry\":[eggdrop_json_string $::serveraddress],\"server_name\":[eggdrop_json_string $::server],\"online_since\":$online,\"on_slot\":[expr {[eggdrop_on_slot_server] ? "true" : "false"}],\"channels\":\[[join $channels ,]\]"
+  return "\"nick\":[eggdrop_json_string $::botnick],\"botname\":[eggdrop_json_string $::botname],\"server_entry\":[eggdrop_json_string $::serveraddress],\"server_name\":[eggdrop_json_string $::server],\"online_since\":$online,\"on_slot\":[expr {[eggdrop_on_slot_server] ? "true" : "false"}],\"channels\":\[[join $channels ,]\],\"probes\":[eggdrop_probes_json]"
 }
 
 if {![info exists eggdrop_snapshot_last]} {
@@ -173,7 +192,7 @@ if {![info exists eggdrop_snapshot_last]} {
 proc eggdrop_snapshot {minute hour day month year} {
   global eggdrop_snapshot_last eggdrop_snapshot_at
   set instance_id [eggdrop_instance_id]
-  if {$instance_id eq ""} {
+  if {$instance_id eq "" || ![info exists ::env(EGGDROP_BUCKET)]} {
     return
   }
   set stable [eggdrop_snapshot_body 0]

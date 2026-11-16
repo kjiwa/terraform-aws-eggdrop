@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.8.0
+
+### Added
+
+- Server probe: once a day, from 10 minutes after its welcome and on its slot minute, each bot resolves the AAAA record of every `irc_servers` entry, connects over TLS with a random nick, waits up to 30 s for the welcome and quits, never joining a channel and in the background. The result is in the bot's snapshot (`probes`), and the status page's Servers section shows the newest probe across bots per entry. The probe is a boot file, `eggdrop-probe`.
+- The roster script stubs each config symbol it uses (`eggdrop_on_slot_server`, `eggdrop_instance_id`, `eggdrop_json_string`, `eggdrop_probes_json`, `eggdrop_nicks`) and skips the snapshot without `EGGDROP_BUCKET`, so it applies in place to a bot whose config is a release older. On v0.7.0 a v0.6.0 config made every heartbeat fail, so `SiteUp` stopped.
+
+### Changed
+
+- `server-timeout` is 20 s (Eggdrop's default is 60): a dead `irc_servers` entry costs 20 s.
+- The Servers section reads the log newest first in three windows (1 h, 1 to 6 h, 6 to 24 h) and stops when every entry has an accept and a failure, so a busy log no longer hides the latest accept. A window that hits 5 pages is named as truncated. The 2000-event cap is gone.
+
+### Upgrade
+
+- Boot files change, so the apply refreshes the bots one at a time.
+- Each listed server sees one more short connection a day per bot.
+
 ## v0.7.0
 
 ### Added

@@ -49,6 +49,7 @@ locals {
       lifecycle_hook_name = local.lifecycle_hook_name
     })
     "config/eggdrop-token"       = file("${path.module}/files/eggdrop-token.py")
+    "config/eggdrop-probe"       = file("${path.module}/files/eggdrop-probe.py")
     "config/eggdrop-spot-drain"  = file("${path.module}/files/spot-drain.sh")
     "config/eggdrop-config-sync" = file("${path.module}/files/config-sync.sh")
     "config/eggdrop-ready"       = file("${path.module}/files/ready.sh")
