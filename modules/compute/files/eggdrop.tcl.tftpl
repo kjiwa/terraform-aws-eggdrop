@@ -13,14 +13,15 @@ set eggdrop_token_ttl 43200
 if {![info exists eggdrop_nicks]} {
   set eggdrop_nicks {}
 }
-if {![info exists eggdrop_umode]} {
-  set eggdrop_umode ""
+foreach eggdrop_name {eggdrop_umode eggdrop_deaf} {
+  if {![info exists $eggdrop_name]} {
+    set $eggdrop_name ""
+  }
 }
 foreach {eggdrop_name eggdrop_body} {
   eggdrop_on_slot_server {return 1}
   eggdrop_instance_id {return ""}
   eggdrop_json_string {return "\"\""}
-  eggdrop_deaf_letter {return ""}
   eggdrop_probes_json {return "\{\}"}
 } {
   if {![llength [info procs $eggdrop_name]]} {
@@ -182,7 +183,7 @@ proc eggdrop_snapshot_body {with_members} {
     lappend channels [eggdrop_channel_json $channel $with_members]
   }
   set online [set ::server-online]
-  return "\"nick\":[eggdrop_json_string $::botnick],\"botname\":[eggdrop_json_string $::botname],\"server_entry\":[eggdrop_json_string $::serveraddress],\"server_name\":[eggdrop_json_string $::server],\"online_since\":$online,\"on_slot\":[expr {[eggdrop_on_slot_server] ? "true" : "false"}],\"umode\":[eggdrop_json_string $::eggdrop_umode],\"deaf\":[eggdrop_json_string [eggdrop_deaf_letter]],\"channels\":\[[join $channels ,]\],\"probes\":[eggdrop_probes_json]"
+  return "\"nick\":[eggdrop_json_string $::botnick],\"botname\":[eggdrop_json_string $::botname],\"server_entry\":[eggdrop_json_string $::serveraddress],\"server_name\":[eggdrop_json_string $::server],\"online_since\":$online,\"on_slot\":[expr {[eggdrop_on_slot_server] ? "true" : "false"}],\"umode\":[eggdrop_json_string $::eggdrop_umode],\"deaf\":[eggdrop_json_string $::eggdrop_deaf],\"channels\":\[[join $channels ,]\],\"probes\":[eggdrop_probes_json]"
 }
 
 if {![info exists eggdrop_snapshot_last]} {

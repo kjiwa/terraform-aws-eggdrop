@@ -96,13 +96,14 @@ def mode_value(snapshot):
 
 
 def not_deaf_note(snapshot):
-    """The deaf letter is the one the server advertised; no letter, or a letter
-    missing from the bot's modes, means the bot hears channel text."""
+    """The deaf letter is the one the server advertised, trusted as such; no
+    letter, or a letter missing from the mode string, means the bot hears
+    channel text."""
     umode = snapshot.get("umode")
     if not umode:
         return []
     letter = snapshot.get("deaf", "")
-    return [] if letter and letter in umode else ["not deaf"]
+    return [] if letter and letter in set(umode.lstrip("+-")) else ["not deaf"]
 
 
 def bot_row(instance_id, snapshot, now):

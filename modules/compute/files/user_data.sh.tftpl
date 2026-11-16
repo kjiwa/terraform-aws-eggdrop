@@ -134,12 +134,17 @@ create_log_stream() {
 write_units() {
   # The bot's userfile and channel file are rebuilt from eggdrop.tcl on every
   # start, so a restart never carries stale users. Eggdrop accepts an empty
-  # userfile that begins with its #4v marker and checks nothing else.
+  # userfile that begins with its #4v marker and checks nothing else. The
+  # terminal console (-t) is the only mode that filters stdout by the console
+  # setting, and it exits on end of file; the FIFO, opened read-write by the
+  # bot itself, is a stdin that never ends.
   cat >"$HOME_DIR/prestart.sh" <<'PRESTART'
 #!/bin/sh
 set -eu
 rm -f eggdrop.user eggdrop.chan
 printf '#4v: eggdrop -- eggdrop -- written Thu Jan  1 00:00:00 1970\n' >eggdrop.user
+rm -f eggdrop.stdin
+mkfifo -m 0600 eggdrop.stdin
 PRESTART
   chmod 0755 "$HOME_DIR/prestart.sh"
 
@@ -158,7 +163,7 @@ Environment=HOME=$HOME_DIR
 Environment=EGGDROP_INSTANCE_ID=$INSTANCE_ID
 Environment=EGGDROP_BUCKET=$BUCKET
 ExecStartPre=$HOME_DIR/prestart.sh
-ExecStart=$HOME_DIR/eggdrop -n eggdrop.conf
+ExecStart=/bin/sh -c 'exec $HOME_DIR/eggdrop -t eggdrop.conf 0<>eggdrop.stdin'
 ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
 RestartSec=15

@@ -44,19 +44,39 @@ set ssl-capath "/etc/ssl/"
 set quiet-save 1
 set ctcp-mode 0
 
+# What the terminal console, and so the journal, prints: joins, modes, cmds,
+# misc, bots, files and server notices. Not p (channel text) or m (private
+# text); the logfile below still keeps m.
+set console "jkcobxs"
+
 logfile mco * "logs/eggdrop.log"
+
+# The pending umode query's timer id, empty when none is pending.
+if {![info exists eggdrop_umode_timer]} {
+  set eggdrop_umode_timer ""
+}
+
+proc eggdrop_cancel_umode_query {} {
+  global eggdrop_umode_timer
+  if {$eggdrop_umode_timer ne ""} {
+    catch {killutimer $eggdrop_umode_timer}
+    set eggdrop_umode_timer ""
+  }
+}
 
 bind evnt - init-server eggdrop_init_server
 proc eggdrop_init_server {type} {
-  global botnick
+  global botnick eggdrop_umode_timer
   putquick "MODE $botnick +i"
-  utimer 10 eggdrop_query_umode
+  eggdrop_cancel_umode_query
+  set eggdrop_umode_timer [utimer 10 eggdrop_query_umode]
 }
 
 # Eggdrop drops a line identical to one still queued, so the query waits until
 # the mode changes above have gone out.
 proc eggdrop_query_umode {} {
-  global botnick
+  global botnick eggdrop_umode_timer
+  set eggdrop_umode_timer ""
   if {[eggdrop_up]} {
     putquick "MODE $botnick"
   }
@@ -66,32 +86,34 @@ proc eggdrop_query_umode {} {
 # ircd, so it is taken from the DEAF token of 005, which follows 001 and so
 # arrives after init-server; a server without the token gets no mode. The bind
 # fires before the change is stored, hence the value is read from the arguments.
+# eggdrop_deaf caches the letter for the snapshot until disconnect.
+if {![info exists eggdrop_deaf]} {
+  set eggdrop_deaf ""
+}
+
 proc eggdrop_isupport_deaf {key isset value} {
-  global botnick
+  global botnick eggdrop_deaf
   if {$isset && [regexp {^[A-Za-z]$} $value]} {
+    set eggdrop_deaf $value
     putquick "MODE $botnick +$value"
+  } else {
+    set eggdrop_deaf ""
   }
   return 0
 }
 bind isupport - DEAF eggdrop_isupport_deaf
 
-proc eggdrop_deaf_letter {} {
-  if {[isupport isset DEAF]} {
-    return [isupport get DEAF]
-  }
-  return ""
-}
-
-# The bot's user modes as the server last reported them (221); empty while
-# disconnected.
+# The bot's user modes as the server last reported them (221), "nick +modes";
+# empty while disconnected.
 if {![info exists eggdrop_umode]} {
   set eggdrop_umode ""
 }
 
 proc eggdrop_raw_umode {from keyword text} {
   global eggdrop_umode
-  set eggdrop_umode [string trimleft [lindex $text 1] :]
-  eggdrop_server_event umode [eggdrop_current_target] $eggdrop_umode
+  if {[regexp {^\S+ :?(\+[A-Za-z]*)$} $text -> modes]} {
+    set eggdrop_umode $modes
+  }
   return 0
 }
 bind raw - 221 eggdrop_raw_umode
@@ -197,6 +219,8 @@ bind evnt - init-server eggdrop_event_accepted
 
 proc eggdrop_event_disconnected {type} {
   set ::eggdrop_umode ""
+  set ::eggdrop_deaf ""
+  eggdrop_cancel_umode_query
   eggdrop_server_event disconnected $::serveraddress ""
 }
 bind evnt - disconnect-server eggdrop_event_disconnected

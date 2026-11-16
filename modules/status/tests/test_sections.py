@@ -158,6 +158,15 @@ def test_bot_without_the_deaf_mode_is_flagged_not_deaf():
     assert "not deaf" in row["caption"]
 
 
+def test_deaf_letter_is_matched_as_a_mode_not_as_a_substring():
+    row = run_bots(["i-1"], {"i-1": snapshot(umode="+iD", deaf="i")})["rows"][0]
+    assert "not deaf" not in row["caption"]
+    row = run_bots(["i-1"], {"i-1": snapshot(umode="+i", deaf="D")})["rows"][0]
+    assert "not deaf" in row["caption"]
+    row = run_bots(["i-1"], {"i-1": snapshot(umode="+iD", deaf="+")})["rows"][0]
+    assert "not deaf" in row["caption"]
+
+
 def test_server_without_a_deaf_token_is_flagged_not_deaf():
     row = run_bots(["i-1"], {"i-1": snapshot(umode="+i", deaf="")})["rows"][0]
     assert "not deaf" in row["caption"]
