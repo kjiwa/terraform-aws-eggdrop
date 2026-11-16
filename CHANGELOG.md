@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.7.0
+
+### Added
+
+- Server event log: each bot sends its connect attempts, welcomes, disconnects, failed connects and the text of `ERROR`, 463 and 465 refusals to the `/eggdrop/irc` log group (30-day retention, a stream per instance, created at boot). Channel and private text is not sent.
+- Bot snapshot: each bot writes `bots/<instance-id>.json` to the bot bucket when its channels, server or connection state change (member counts do not count as a change) and at least every 15 minutes. The status page gains a Bots section (nick, ident, server, connect time, slot, channels, snapshot age) and a Servers section (last accept and last failure or refusal per `irc_servers` entry over 24 hours, reading at most 5 pages or 2000 events and saying "truncated" past that), behind the token gate only.
+- `OnSlotServer`, published with `SiteUp` and `GroupSize`: 0 while a bot sits off its slot server. The `eggdrop-on-slot-server` alarm fires after 60 minutes of 0, with silence not a breach, and mails the status page alert topic.
+- Instance role: `s3:PutObject` on `bots/*` and `logs:CreateLogStream` and `logs:PutLogEvents` on the log group. Status plugin role: `s3:GetObject` on `bots/*`, `s3:ListBucket`, `autoscaling:DescribeAutoScalingGroups` and `logs:FilterLogEvents` on the log group.
+- The status module takes `bot_bucket`, `irc_log_group` and `irc_servers`; the compute module outputs `irc_log_group_name`.
+
+### Changed
+
+- A boot that cannot read its instance id from the metadata service starts the bot anyway, without server events or snapshots.
+- The `eggdrop-on-slot-server` window is derived from the jump gate (two gates), not written beside it.
+- `eggdrop_servers` is rendered with one server too, and the slot lookup is shared by the jump and the new metric.
+
+### Upgrade
+
+- Boot files change, so the apply refreshes the bots one at a time.
+- The new alarm starts clear. It costs about 0.40 USD a month with the metric.
+
 ## v0.6.0
 
 ### Changed

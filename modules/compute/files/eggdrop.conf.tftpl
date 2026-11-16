@@ -29,10 +29,10 @@ set prefer-ipv6 1
 server add ${server.host} +${server.port}
 %{ endfor ~}
 
-%{ if length(irc_servers) > 1 ~}
 set eggdrop_servers {%{ for server in irc_servers } {${server.host} +${server.port}}%{ endfor } }
 
-%{ endif ~}
+set eggdrop_log_group "${log_group}"
+
 set userfile "eggdrop.user"
 set chanfile "eggdrop.chan"
 set help-path "help/"
@@ -48,6 +48,123 @@ proc eggdrop_init_server {type} {
   global botnick
   putquick "MODE $botnick +i"
 }
+
+# A string as a JSON literal. Non-ASCII leaves as \u escapes (with surrogate
+# pairs), so the output does not depend on the process locale.
+proc eggdrop_json_string {text} {
+  set out ""
+  foreach char [split $text ""] {
+    scan $char %c code
+    switch -exact -- $char {
+      "\"" { append out "\\\"" }
+      "\\" { append out "\\\\" }
+      default {
+        if {$code < 32 || $code > 126} {
+          if {$code > 65535} {
+            incr code -65536
+            append out [format {\u%04x\u%04x} [expr {0xd800 + ($code >> 10)}] [expr {0xdc00 + ($code & 0x3ff)}]]
+          } else {
+            append out [format {\u%04x} $code]
+          }
+        } else {
+          append out $char
+        }
+      }
+    }
+  }
+  return "\"$out\""
+}
+
+# Empty when boot could not read the instance metadata.
+proc eggdrop_instance_id {} {
+  if {[info exists ::env(EGGDROP_INSTANCE_ID)]} {
+    return $::env(EGGDROP_INSTANCE_ID)
+  }
+  return ""
+}
+
+# One CloudWatch Logs line per server event: "event host:port text", with "-"
+# for an event that has no target. The trailing & keeps the call from blocking
+# PING replies. The stream is named after the instance and created at boot.
+proc eggdrop_server_event {event target text} {
+  global eggdrop_region eggdrop_log_group
+  set instance_id [eggdrop_instance_id]
+  if {$instance_id eq ""} {
+    return
+  }
+  if {$target eq ""} {
+    set target -
+  }
+  set message [string trim "$event $target $text"]
+  set events "\[{\"timestamp\":[clock milliseconds],\"message\":[eggdrop_json_string $message]}\]"
+  catch {
+    exec aws logs put-log-events --region $eggdrop_region \
+      --log-group-name $eggdrop_log_group \
+      --log-stream-name $instance_id \
+      --log-events $events > /dev/null 2> /dev/null &
+  }
+}
+
+# serveraddress is empty until the server's welcome, so the entry being tried
+# comes from the "Trying server" line.
+if {![info exists eggdrop_attempt]} {
+  set eggdrop_attempt ""
+}
+
+proc eggdrop_current_target {} {
+  global eggdrop_attempt
+  if {$::serveraddress ne ""} {
+    return $::serveraddress
+  }
+  return $eggdrop_attempt
+}
+
+proc eggdrop_log_trying {level channel text} {
+  global eggdrop_attempt
+  set eggdrop_attempt [lindex $text 2]
+  eggdrop_server_event trying $eggdrop_attempt ""
+}
+bind log - {* Trying server *} eggdrop_log_trying
+
+proc eggdrop_log_failed {level channel text} {
+  eggdrop_server_event failed [eggdrop_current_target] $text
+}
+bind log - {* Failed connect to *} eggdrop_log_failed
+bind log - {* Timeout: connect *} eggdrop_log_failed
+
+# A server that drops the bot before its welcome logs only this line; once
+# online, disconnect-server reports it. Both fire before server-online is
+# reset, so the check below logs each disconnect once.
+proc eggdrop_log_dropped {level channel text} {
+  if {[set ::server-online] > 0} {
+    return
+  }
+  eggdrop_server_event disconnected [eggdrop_current_target] $text
+}
+bind log - {* Disconnected from *} eggdrop_log_dropped
+
+proc eggdrop_event_accepted {type} {
+  eggdrop_server_event accepted $::serveraddress $::server
+}
+bind evnt - init-server eggdrop_event_accepted
+
+proc eggdrop_event_disconnected {type} {
+  eggdrop_server_event disconnected $::serveraddress ""
+}
+bind evnt - disconnect-server eggdrop_event_disconnected
+
+# A server that refuses the bot says why in ERROR or 463 (not permitted) and
+# 465 (banned); the built-in handlers still run.
+proc eggdrop_raw_refused {from keyword text} {
+  if {$keyword ne "ERROR"} {
+    regsub {^\S+ } $text "" text
+  }
+  eggdrop_server_event refused [eggdrop_current_target] "$keyword [string trimleft $text :]"
+  return 0
+}
+bind raw - ERROR* eggdrop_raw_refused
+bind raw - 463 eggdrop_raw_refused
+bind raw - 465 eggdrop_raw_refused
 
 # Every bot boots as the first nick. One that holds no listed name claims the
 # first listed name no one in its channels wears; set nick also moves
@@ -77,33 +194,60 @@ proc eggdrop_claim_nick {minute hour day month year} {
 }
 bind time - "* * * * *" eggdrop_claim_nick
 
-%{ if length(irc_servers) > 1 ~}
 # The bot wearing eggdrop_nicks[i] belongs on eggdrop_servers[i mod length], so
-# one server outage leaves the other bots opped. A bot jumps only on minutes
-# whose number mod the bot count is its slot, so two bots never jump together,
-# at most once per 1800 s, and only while another listed bot is opped in every
-# channel, with at least one channel: moving never drops the last op. A bot
-# that failed over returns to its slot server once it has waited out the gate.
+# one server outage leaves the other bots opped. eggdrop_slot is -1 for a bot
+# with no listed name; eggdrop_slot_server is empty for it and for a single
+# server, where there is nothing to be on or off.
+proc eggdrop_slot {} {
+  global eggdrop_nicks botnick
+  return [lsearch -exact -nocase $eggdrop_nicks $botnick]
+}
+
+proc eggdrop_slot_server {} {
+  global eggdrop_servers
+  set slot [eggdrop_slot]
+  if {$slot < 0 || [llength $eggdrop_servers] < 2} {
+    return ""
+  }
+  return [lindex $eggdrop_servers [expr {$slot % [llength $eggdrop_servers]}]]
+}
+
+# 1 when the bot is on its slot server or has none.
+proc eggdrop_on_slot_server {} {
+  set server [eggdrop_slot_server]
+  if {$server eq ""} {
+    return 1
+  }
+  lassign $server host port
+  return [string equal -nocase $::serveraddress "$host:$port"]
+}
+
+%{ if length(irc_servers) > 1 ~}
+# A bot jumps only on minutes whose number mod the bot count is its slot, so
+# two bots never jump together, at most once per ${slot_gate_seconds} s, and only while another
+# listed bot is opped in every channel, with at least one channel: moving never
+# drops the last op. A bot that failed over returns to its slot server once it
+# has waited out the gate.
 if {![info exists eggdrop_moved_at]} {
   set eggdrop_moved_at 0
 }
 
 proc eggdrop_take_server {minute hour day month year} {
-  global eggdrop_nicks eggdrop_servers eggdrop_moved_at botnick
-  set slot [lsearch -exact -nocase $eggdrop_nicks $botnick]
-  if {![eggdrop_up] || $slot < 0} {
+  global eggdrop_nicks eggdrop_moved_at botnick
+  set server [eggdrop_slot_server]
+  if {![eggdrop_up] || $server eq ""} {
     return
   }
-  if {[scan $minute %d] % [llength $eggdrop_nicks] != $slot} {
+  if {[scan $minute %d] % [llength $eggdrop_nicks] != [eggdrop_slot]} {
     return
   }
-  if {[unixtime] - $eggdrop_moved_at < 1800 || [llength [channels]] == 0} {
+  if {[unixtime] - $eggdrop_moved_at < ${slot_gate_seconds} || [llength [channels]] == 0} {
     return
   }
-  lassign [lindex $eggdrop_servers [expr {$slot % [llength $eggdrop_servers]}]] host port
-  if {[string equal -nocase $::serveraddress "$host:$port"]} {
+  if {[eggdrop_on_slot_server]} {
     return
   }
+  lassign $server host port
   foreach peer $eggdrop_nicks {
     if {[string equal -nocase $peer $botnick]} {
       continue

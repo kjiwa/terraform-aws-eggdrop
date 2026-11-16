@@ -22,6 +22,9 @@ variables {
   spot_enabled                 = true
   status_key                   = "0123456789"
   token_key                    = "eggdrop-token"
+  bot_bucket                   = "eggdrop-bot-test"
+  irc_log_group                = "/eggdrop/irc"
+  irc_servers                  = [{ host = "a.example.net", port = 6697 }, { host = "b.example.net", port = 7000 }]
 }
 
 run "key_lives_in_ssm_and_the_shell_reads_the_same_token_key" {
@@ -35,5 +38,27 @@ run "key_lives_in_ssm_and_the_shell_reads_the_same_token_key" {
   assert {
     condition     = length(output.origins) == 2 && length(output.behaviors) == 5
     error_message = "The core module must supply the shell and Lambda origins and five behaviors."
+  }
+}
+
+run "plugin_reads_snapshots_and_events_and_nothing_wider" {
+  command = plan
+
+  assert {
+    condition     = local.irc_server_addresses == ["a.example.net:+6697", "b.example.net:+7000"]
+    error_message = "Servers must be spelled as the bot's serveraddress is: host:+port."
+  }
+
+  assert {
+    condition = alltrue([
+      for statement in local.plugin_policy.Statement :
+      statement.Resource != "*" || statement.Action == "autoscaling:DescribeAutoScalingGroups"
+    ])
+    error_message = "Only DescribeAutoScalingGroups, which takes no resource, may use *."
+  }
+
+  assert {
+    condition     = one([for statement in local.plugin_policy.Statement : statement.Resource if statement.Sid == "ReadBotSnapshots"]) == "arn:aws:s3:::eggdrop-bot-test/bots/*" && one([for statement in local.plugin_policy.Statement : statement.Resource if statement.Sid == "ReadServerEvents"]) == "arn:aws:logs:us-west-2:123456789012:log-group:/eggdrop/irc:*"
+    error_message = "The plugin reads only bots/* in the bot bucket and the one log group."
   }
 }

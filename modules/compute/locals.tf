@@ -4,6 +4,12 @@ data "aws_caller_identity" "default" {}
 locals {
   name = "eggdrop"
 
+  log_group_name = "/eggdrop/irc"
+
+  # Minimum time between a bot's jumps to its slot server; the OnSlotServer
+  # alarm window is derived from it.
+  slot_gate_seconds = 1800
+
   # Literal, not read from the ASG and hook: user_data embeds config_hash,
   # which hashes the boot files that name them.
   lifecycle_hook_name = "launching"
@@ -38,6 +44,8 @@ locals {
       nicks               = var.nicks
       irc_servers         = var.irc_servers
       asg_name            = local.name
+      log_group           = local.log_group_name
+      slot_gate_seconds   = local.slot_gate_seconds
       lifecycle_hook_name = local.lifecycle_hook_name
     })
     "config/eggdrop-token"       = file("${path.module}/files/eggdrop-token.py")

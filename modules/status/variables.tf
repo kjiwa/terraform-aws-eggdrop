@@ -43,3 +43,21 @@ variable "token_key" {
   description = "localStorage key the status page reads its token from."
   type        = string
 }
+
+variable "bot_bucket" {
+  description = "Bucket the bots write their status snapshots to, under bots/ (modules/compute output)."
+  type        = string
+}
+
+variable "irc_log_group" {
+  description = "Log group holding the bots' server events (modules/compute output)."
+  type        = string
+}
+
+variable "irc_servers" {
+  description = "Servers the bots are configured with; the Servers section lists each."
+  type = list(object({
+    host = string
+    port = number
+  }))
+}

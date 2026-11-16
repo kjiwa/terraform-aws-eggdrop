@@ -9,6 +9,7 @@ readonly REGION="${region}"
 readonly BUCKET="${bucket}"
 readonly EGGDROP_VERSION="${eggdrop_version}"
 readonly EGGDROP_SHA256="${eggdrop_sha256}"
+readonly LOG_GROUP="${log_group}"
 # Changes whenever a boot file does, so the ASG replaces the instance. The
 # roster (eggdrop.tcl) is excluded: eggdrop-config-sync applies it in place.
 readonly CONFIG_HASH="${config_hash}"
@@ -39,6 +40,11 @@ retry() {
     _retry_tries=$((_retry_tries + 1))
     sleep 10
   done
+}
+
+fetch_instance_id() {
+  _imds_token="$(curl -fsS -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' http://169.254.169.254/latest/api/token)"
+  curl -fsS -H "X-aws-ec2-metadata-token: $_imds_token" http://169.254.169.254/latest/meta-data/instance-id
 }
 
 enable_swap() {
@@ -111,6 +117,19 @@ fetch_config() {
   chown -R eggdrop "$HOME_DIR"
 }
 
+# The bot writes its server events to a stream named after the instance, and
+# its status snapshot to an object named after it. Without the id the bot
+# still runs and writes neither.
+create_log_stream() {
+  if [ -z "$INSTANCE_ID" ]; then
+    log "No instance id; the bot runs without server events or snapshots"
+    return 0
+  fi
+  log "Creating log stream $INSTANCE_ID..."
+  retry aws logs create-log-stream --log-group-name "$LOG_GROUP" --log-stream-name "$INSTANCE_ID" ||
+    log "log stream failed; the bot runs without server events"
+}
+
 write_units() {
   # The bot's userfile and channel file are rebuilt from eggdrop.tcl on every
   # start, so a restart never carries stale users. Eggdrop accepts an empty
@@ -135,6 +154,8 @@ WorkingDirectory=$HOME_DIR
 Environment=AWS_USE_DUALSTACK_ENDPOINT=true
 Environment=AWS_DEFAULT_REGION=$REGION
 Environment=HOME=$HOME_DIR
+Environment=EGGDROP_INSTANCE_ID=$INSTANCE_ID
+Environment=EGGDROP_BUCKET=$BUCKET
 ExecStartPre=$HOME_DIR/prestart.sh
 ExecStart=$HOME_DIR/eggdrop -n eggdrop.conf
 ExecReload=/bin/kill -HUP \$MAINPID
@@ -187,12 +208,14 @@ UNIT
 
 main() {
   log "Config $CONFIG_HASH"
+  INSTANCE_ID="$(retry fetch_instance_id)" || INSTANCE_ID=""
   enable_swap
   enable_security_updates
   install_build_tools
   fetch_tarball
   build_eggdrop
   fetch_config
+  create_log_stream
   write_units
   systemctl daemon-reload
   systemctl enable --now eggdrop.service eggdrop-spot-drain.service eggdrop-config-sync.timer

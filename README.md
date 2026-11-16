@@ -91,11 +91,15 @@ Each bot also publishes `GroupSize` in the same call: how many of the `nicks` ar
 
 With more than one `irc_servers` entry, the bots spread over the servers by nick slot, so one server's outage or restart leaves the other bot connected and opped, and the dropped bot cycles on and is re-opped by its peer. A split between their servers leaves an opped bot on each side. The slot rule needs the servers to be one network: on separate networks each bot sees only itself, `GroupSize` reads 1 and the alarm fires.
 
+Each bot also publishes `OnSlotServer` in that call: 0 while it sits off its slot server, 1 otherwise (and always with one server or an unlisted name). `GroupSize` cannot see two bots on one server. The `eggdrop-on-slot-server` alarm fires when the smallest value stays 0 for 60 minutes, two jump gates, so a failover the bots cannot undo is noticed; silence is not a breach, because `SiteUp` covers it. It mails the same topic and costs about 0.40 USD a month (one custom metric and one alarm, not measured).
+
+Each bot sends its server events to the `/eggdrop/irc` log group (30-day retention, one stream per instance): the server it tries, its welcome, every disconnect and failed connect, and the text of an `ERROR` line or a 463 or 465 refusal. Channel and private text is never sent. A bot also writes `bots/<instance-id>.json` to the bot bucket when its state changes (member counts excluded) and at least every 15 minutes, and the status page's Bots section reads those: nick, ident (`$::botname`, which carries the bot's IPv6 address), the server entry and the name the server gives itself, when it connected, whether it is on its slot server, each channel's joined, opped and member count, and the snapshot's age, marked stale past 20 minutes. The Servers section lists each `irc_servers` entry with its last accept in 24 hours and its last failure or refusal and the reason, reading at most 5 pages or 2000 events and saying "truncated" past that. Bots shutting down are not listed, and a snapshot that cannot be read shows as such. Both sections sit behind the token gate, never on `/public`.
+
 The status page gate verifies the token in a Lambda with a key in SSM, so it works while the bot is down.
 
 ## Cost
 
-About 3 USD a month for two bots at Spot prices in us-west-2: each instance (about 0.0008 USD an hour at the last check, and at most 0.0024 for a `t4g.micro`) with an 8 GB root volume, plus metrics and logs. The second bot's volume and metrics are estimated, not measured; one bot costs about 1.2 USD less. CloudFront and Lambda stay inside the free tier. A Route 53 zone is yours to add.
+About 3 USD a month for two bots at Spot prices in us-west-2: each instance (about 0.0008 USD an hour at the last check, and at most 0.0024 for a `t4g.micro`) with an 8 GB root volume, plus metrics, alarms and logs (the snapshots add about 6,000 S3 PUTs a month, a few cents; log ingestion is negligible). The second bot's volume and metrics are estimated, not measured; one bot costs about 1.2 USD less. CloudFront and Lambda stay inside the free tier. A Route 53 zone is yours to add.
 
 ## Verification
 

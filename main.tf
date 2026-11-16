@@ -34,12 +34,13 @@ module "compute" {
 module "monitoring" {
   source = "./modules/monitoring"
 
-  domain_name      = var.domain_name
-  asg_name         = module.compute.asg_name
-  alert_email      = var.alert_email
-  metric_namespace = local.metric_namespace
-  group_size       = min(var.bots, length(var.nicks))
-  active           = var.active
+  domain_name       = var.domain_name
+  asg_name          = module.compute.asg_name
+  alert_email       = var.alert_email
+  metric_namespace  = local.metric_namespace
+  group_size        = min(var.bots, length(var.nicks))
+  slot_gate_seconds = module.compute.slot_gate_seconds
+  active            = var.active
 }
 
 module "status" {
@@ -48,6 +49,9 @@ module "status" {
   domain_name                  = var.domain_name
   distribution_arn             = module.edge.distribution_arn
   asg_name                     = module.compute.asg_name
+  bot_bucket                   = module.compute.bucket_name
+  irc_log_group                = module.compute.irc_log_group_name
+  irc_servers                  = var.irc_servers
   episodes_log_group           = module.monitoring.episodes_log_group_name
   spot_interruptions_log_group = module.monitoring.spot_interruptions_log_group_name
   metric_namespace             = local.metric_namespace

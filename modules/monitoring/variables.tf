@@ -27,3 +27,8 @@ variable "active" {
   description = "If false the environment is asleep and the alarm-notification rule is disabled."
   type        = bool
 }
+
+variable "slot_gate_seconds" {
+  description = "Minimum seconds between a bot's jumps to its slot server; the OnSlotServer alarm waits two gates."
+  type        = number
+}
