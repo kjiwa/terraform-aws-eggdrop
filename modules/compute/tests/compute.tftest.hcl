@@ -675,11 +675,54 @@ run "server_probe_is_installed_and_bound" {
   }
 }
 
+run "bots_set_the_deaf_mode_the_server_advertises" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      for bind in [
+        "bind isupport - DEAF eggdrop_isupport_deaf",
+        "bind raw - 221 eggdrop_raw_umode",
+      ] : strcontains(aws_s3_object.config["config/eggdrop.conf"].content, bind)
+    ])
+    error_message = "The deaf letter comes from the DEAF token, and the user modes are read back from 221."
+  }
+
+  assert {
+    condition     = !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "+D")
+    error_message = "The deaf letter is never guessed: on other ircds D means something else."
+  }
+
+  assert {
+    condition     = !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "eggdrop_server_event umode") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "eggdrop_cancel_umode_query") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set eggdrop_deaf $value")
+    error_message = "The umode is stored without an event line, one query timer is pending at most, and the snapshot's deaf letter is the cached one."
+  }
+}
+
+run "the_console_never_prints_channel_text" {
+  command = plan
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set console \"jkcobxs\"")
+    error_message = "The console mask must keep joins, modes, misc and server notices and drop p (channel text) and m (private text)."
+  }
+
+  assert {
+    condition     = !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set console \"mkcoblxs\"") && !can(regex("set console \"[^\"]*[pm]", aws_s3_object.config["config/eggdrop.conf"].content))
+    error_message = "The console mask must not carry p or m."
+  }
+
+  assert {
+    condition     = strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "exec $HOME_DIR/eggdrop -t eggdrop.conf 0<>eggdrop.stdin") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "mkfifo -m 0600 eggdrop.stdin") && !strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "eggdrop -n eggdrop.conf")
+    error_message = "Only the -t terminal console filters stdout by the console mask (-n prints every log line), and -t needs a stdin that never ends."
+  }
+}
+
 run "roster_script_stubs_what_an_older_conf_lacks" {
   command = plan
 
   assert {
-    condition     = alltrue([for symbol in ["eggdrop_on_slot_server", "eggdrop_instance_id", "eggdrop_json_string", "eggdrop_probes_json"] : strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "  ${symbol} {return")]) && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "if {![info exists eggdrop_nicks]}")
+    condition     = alltrue([for symbol in ["eggdrop_on_slot_server", "eggdrop_instance_id", "eggdrop_json_string", "eggdrop_probes_json"] : strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "  ${symbol} {return")]) && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "if {![info exists eggdrop_nicks]}") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "foreach eggdrop_name {eggdrop_umode eggdrop_deaf}")
     error_message = "The roster script runs on bots whose conf is a release older, so each conf symbol it uses needs a stub."
   }
 

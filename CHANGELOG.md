@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.8.1
+
+### Added
+
+- The bot never prints channel text to its console, so none reaches the journal. The cause was `eggdrop -n`: in Eggdrop 1.10.2 the flag is a no-op that runs in the foreground with no terminal, and `putlog` then writes every log line to stdout whatever the `console` setting says. The unit now runs `-t`, the only foreground mode that filters stdout by `console`, with `set console "jkcobxs"` (no `p`, no `m`). `-t` exits on end of file, so stdin is a FIFO the bot opens read-write itself (`eggdrop.stdin`, mode 0600, recreated by `prestart.sh`). Joins, modes, misc, commands, bot and server notices and errors stay in the journal.
+- Deaf bots: when the server's `DEAF` token (005) names a letter, the bot sets that user mode, so the server stops delivering channel messages to it. A server without the token gets no mode.
+- The bot reads its user modes back (221) and stores them, only when the text has the shape `nick +modes`. The snapshot carries `umode` and `deaf`, both cleared on disconnect; the Bots row shows `mode +iD` and says "not deaf" in its caption when the deaf letter is not among the mode letters or the server has no token. A snapshot without `umode` makes no claim.
+- One umode query timer is pending at most: a reconnect cancels the previous one.
+- The roster script stubs two more config variables (`eggdrop_deaf`, `eggdrop_umode`), so it still applies in place to a bot whose config is v0.8.0 or older.
+
+### Upgrade
+
+- Boot files change, so the apply refreshes the bots one at a time.
+- `logfile` keeps `m`: `/msg` and CTCP text sent to a bot stays in `logs/` on the instance disk until the instance is replaced.
+- A running bot keeps `-n` and the old console until its instance is replaced.
+
 ## v0.8.0
 
 ### Added
