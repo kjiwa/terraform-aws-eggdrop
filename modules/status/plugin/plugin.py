@@ -90,6 +90,21 @@ def channel_text(channel):
     return f"{channel['name']} {state}, {channel['members']} members"
 
 
+def mode_value(snapshot):
+    """A snapshot from a bot that predates user modes has none: no claim."""
+    return f", mode {snapshot['umode']}" if snapshot.get("umode") else ""
+
+
+def not_deaf_note(snapshot):
+    """The deaf letter is the one the server advertised; no letter, or a letter
+    missing from the bot's modes, means the bot hears channel text."""
+    umode = snapshot.get("umode")
+    if not umode:
+        return []
+    letter = snapshot.get("deaf", "")
+    return [] if letter and letter in umode else ["not deaf"]
+
+
 def bot_row(instance_id, snapshot, now):
     if snapshot is None:
         return {"label": instance_id, "value": "no snapshot"}
@@ -102,10 +117,15 @@ def bot_row(instance_id, snapshot, now):
         if snapshot["server_name"]:
             server = f"{server} ({snapshot['server_name']})"
         slot = "on its slot server" if snapshot["on_slot"] else "OFF its slot server"
-        value = f"{server}, since {clock(snapshot['online_since'])}, {slot}"
+        value = f"{server}, since {clock(snapshot['online_since'])}, {slot}{mode_value(snapshot)}"
     else:
         value = "disconnected"
-    details = [snapshot["botname"], *map(channel_text, snapshot["channels"]), freshness]
+    details = [
+        snapshot["botname"],
+        *map(channel_text, snapshot["channels"]),
+        *not_deaf_note(snapshot),
+        freshness,
+    ]
     return {
         "label": snapshot["nick"],
         "value": value,

@@ -32,6 +32,8 @@ def snapshot(**fields):
         "server_name": "a1.example.net:+6697",
         "online_since": NOW - 3600,
         "on_slot": True,
+        "umode": "+iD",
+        "deaf": "D",
         "channels": [
             {"name": "#one", "joined": True, "opped": True, "members": 4},
             {"name": "#two", "joined": False, "opped": False, "members": 0},
@@ -142,6 +144,31 @@ def test_missing_snapshot_reads_no_snapshot():
 def test_bot_off_its_slot_server_is_flagged():
     facts = run_bots(["i-1"], {"i-1": snapshot(on_slot=False)})
     assert "OFF its slot server" in facts["rows"][0]["value"]
+
+
+def test_deaf_bot_shows_its_modes_and_no_warning():
+    first = run_bots(["i-1"], {"i-1": snapshot()})["rows"][0]
+    assert first["value"].endswith("on its slot server, mode +iD")
+    assert "not deaf" not in first["caption"]
+
+
+def test_bot_without_the_deaf_mode_is_flagged_not_deaf():
+    row = run_bots(["i-1"], {"i-1": snapshot(umode="+i")})["rows"][0]
+    assert row["value"].endswith("mode +i")
+    assert "not deaf" in row["caption"]
+
+
+def test_server_without_a_deaf_token_is_flagged_not_deaf():
+    row = run_bots(["i-1"], {"i-1": snapshot(umode="+i", deaf="")})["rows"][0]
+    assert "not deaf" in row["caption"]
+
+
+def test_snapshot_without_user_modes_makes_no_claim():
+    old = snapshot()
+    del old["umode"], old["deaf"]
+    row = run_bots(["i-1"], {"i-1": old})["rows"][0]
+    assert "mode" not in row["value"]
+    assert "not deaf" not in row["caption"]
 
 
 def test_disconnected_bot_reads_disconnected():

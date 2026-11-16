@@ -50,7 +50,51 @@ bind evnt - init-server eggdrop_init_server
 proc eggdrop_init_server {type} {
   global botnick
   putquick "MODE $botnick +i"
+  utimer 10 eggdrop_query_umode
 }
+
+# Eggdrop drops a line identical to one still queued, so the query waits until
+# the mode changes above have gone out.
+proc eggdrop_query_umode {} {
+  global botnick
+  if {[eggdrop_up]} {
+    putquick "MODE $botnick"
+  }
+}
+
+# The deaf user mode keeps channel text from the bot. Its letter differs by
+# ircd, so it is taken from the DEAF token of 005, which follows 001 and so
+# arrives after init-server; a server without the token gets no mode. The bind
+# fires before the change is stored, hence the value is read from the arguments.
+proc eggdrop_isupport_deaf {key isset value} {
+  global botnick
+  if {$isset && [regexp {^[A-Za-z]$} $value]} {
+    putquick "MODE $botnick +$value"
+  }
+  return 0
+}
+bind isupport - DEAF eggdrop_isupport_deaf
+
+proc eggdrop_deaf_letter {} {
+  if {[isupport isset DEAF]} {
+    return [isupport get DEAF]
+  }
+  return ""
+}
+
+# The bot's user modes as the server last reported them (221); empty while
+# disconnected.
+if {![info exists eggdrop_umode]} {
+  set eggdrop_umode ""
+}
+
+proc eggdrop_raw_umode {from keyword text} {
+  global eggdrop_umode
+  set eggdrop_umode [string trimleft [lindex $text 1] :]
+  eggdrop_server_event umode [eggdrop_current_target] $eggdrop_umode
+  return 0
+}
+bind raw - 221 eggdrop_raw_umode
 
 # A string as a JSON literal. Non-ASCII leaves as \u escapes (with surrogate
 # pairs), so the output does not depend on the process locale.
@@ -152,6 +196,7 @@ proc eggdrop_event_accepted {type} {
 bind evnt - init-server eggdrop_event_accepted
 
 proc eggdrop_event_disconnected {type} {
+  set ::eggdrop_umode ""
   eggdrop_server_event disconnected $::serveraddress ""
 }
 bind evnt - disconnect-server eggdrop_event_disconnected

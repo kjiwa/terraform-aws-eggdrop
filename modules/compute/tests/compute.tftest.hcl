@@ -675,11 +675,30 @@ run "server_probe_is_installed_and_bound" {
   }
 }
 
+run "bots_set_the_deaf_mode_the_server_advertises" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      for bind in [
+        "bind isupport - DEAF eggdrop_isupport_deaf",
+        "bind raw - 221 eggdrop_raw_umode",
+      ] : strcontains(aws_s3_object.config["config/eggdrop.conf"].content, bind)
+    ])
+    error_message = "The deaf letter comes from the DEAF token, and the user modes are read back from 221."
+  }
+
+  assert {
+    condition     = !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "+D")
+    error_message = "The deaf letter is never guessed: on other ircds D means something else."
+  }
+}
+
 run "roster_script_stubs_what_an_older_conf_lacks" {
   command = plan
 
   assert {
-    condition     = alltrue([for symbol in ["eggdrop_on_slot_server", "eggdrop_instance_id", "eggdrop_json_string", "eggdrop_probes_json"] : strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "  ${symbol} {return")]) && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "if {![info exists eggdrop_nicks]}")
+    condition     = alltrue([for symbol in ["eggdrop_on_slot_server", "eggdrop_instance_id", "eggdrop_json_string", "eggdrop_probes_json", "eggdrop_deaf_letter"] : strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "  ${symbol} {return")]) && alltrue([for variable in ["eggdrop_nicks", "eggdrop_umode"] : strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "if {![info exists ${variable}]}")])
     error_message = "The roster script runs on bots whose conf is a release older, so each conf symbol it uses needs a stub."
   }
 

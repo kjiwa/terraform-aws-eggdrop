@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.8.1
+
+### Added
+
+- Deaf bots: when the server's `DEAF` token (005) names a letter, the bot sets that user mode, so the server withholds channel messages from it. A server without the token gets no mode. Before this, the bot's terminal console (stdout, so the journal) printed channel text and CTCP actions.
+- The bot reads its user modes back (221) and logs a `umode` line to the server event log. The snapshot carries `umode` and `deaf`; the Bots row shows `mode +iD` and says "not deaf" in its caption when the deaf letter is missing from the modes or the server has no token. A snapshot without `umode` makes no claim.
+- The roster script stubs two more config symbols (`eggdrop_deaf_letter`, `eggdrop_umode`), so it still applies in place to a bot whose config is v0.8.0 or older.
+
+### Upgrade
+
+- Boot files change, so the apply refreshes the bots one at a time.
+- `logfile` keeps `m`: `/msg` and CTCP text sent to a bot stays in `logs/` on the instance disk until the instance is replaced.
+
 ## v0.8.0
 
 ### Added
