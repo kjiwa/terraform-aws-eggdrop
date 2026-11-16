@@ -8,6 +8,7 @@ import ssl
 import subprocess
 import sys
 import threading
+import time
 
 import pytest
 
@@ -199,3 +200,118 @@ def test_server_entry_splits_host_and_port():
         6697,
     )
     assert eggdrop_probe.parse_server("2001:db8::1:6697") == ("2001:db8::1", 6697)
+
+
+class Scripted:
+    """A connection fed canned lines, whose writes can fail."""
+
+    def __init__(self, lines, fail_on=None):
+        self.lines = [line.encode() + b"\r\n" for line in lines]
+        self.fail_on = fail_on
+        self.sent = []
+
+    def settimeout(self, seconds):
+        pass
+
+    def recv(self, size):
+        return self.lines.pop(0) if self.lines else b""
+
+    def sendall(self, data):
+        if self.fail_on and data.startswith(self.fail_on):
+            raise BrokenPipeError(32, "Broken pipe")
+        self.sent.append(data.decode())
+
+    def close(self):
+        pass
+
+
+def test_a_failed_quit_after_the_welcome_leaves_the_probe_ok(monkeypatch):
+    connection = Scripted([":irc.test 001 nick :Welcome"], fail_on=b"QUIT")
+    monkeypatch.setattr(eggdrop_probe, "connect", lambda *arguments: connection)
+    assert eggdrop_probe.probe("localhost", 6697)["ok"] is True
+
+
+def test_the_handshake_gets_only_the_time_left(monkeypatch):
+    seen = []
+
+    class Context:
+        check_hostname = verify_mode = None
+
+        def wrap_socket(self, raw, server_hostname):
+            seen.append(raw.gettimeout())
+            raw.close()
+            raise ssl.SSLError("stop")
+
+    connect = socket.socket.connect
+
+    def slow_connect(self, address):
+        threading.Event().wait(0.3)
+        connect(self, address)
+
+    listener = socket.socket(socket.AF_INET6)
+    listener.bind(("::1", 0))
+    listener.listen(1)
+    monkeypatch.setattr(socket.socket, "connect", slow_connect)
+    monkeypatch.setattr(ssl, "create_default_context", lambda: Context())
+    eggdrop_probe.probe("localhost", listener.getsockname()[1], welcome_seconds=1.0)
+    listener.close()
+    assert seen[0] < 0.75
+
+
+def refuse(numeric):
+    def script(connection, received):
+        connection.recv(4096)
+        connection.sendall(f":irc.test {numeric} * :Not for you\r\n".encode())
+        threading.Event().wait(2)
+
+    return script
+
+
+@pytest.mark.parametrize("numeric", ["465", "464", "463", "432", "484"])
+def test_a_registration_refusal_fails_at_once_with_numeric_and_text(
+    certificate, numeric
+):
+    server = Server(certificate, refuse(numeric))
+    started = time.monotonic()
+    result = eggdrop_probe.probe("localhost", server.port)
+    assert result == {"ok": False, "error": f"{numeric} Not for you"}
+    assert time.monotonic() - started < 1.5
+
+
+def nick_in_use_then(second):
+    def script(connection, received):
+        connection.recv(4096)
+        connection.sendall(b":irc.test 433 * pfirst :Nickname is already in use\r\n")
+        received.append(connection.recv(4096).decode().strip())
+        connection.sendall(second.encode())
+        threading.Event().wait(1)
+
+    return script
+
+
+def test_a_nick_in_use_is_retried_once_with_a_new_nick(certificate):
+    server = Server(certificate, nick_in_use_then(":irc.test 001 x :Welcome\r\n"))
+    result = eggdrop_probe.probe("localhost", server.port)
+    assert result["ok"] is True
+    assert server.received[0].startswith("NICK p")
+
+
+def test_a_second_nick_in_use_is_the_failure(certificate):
+    second = ":irc.test 433 * p :Nickname is already in use\r\n"
+    server = Server(certificate, nick_in_use_then(second))
+    result = eggdrop_probe.probe("localhost", server.port)
+    assert result == {"ok": False, "error": "433 Nickname is already in use"}
+
+
+def test_main_writes_a_top_level_error_when_the_probe_dies(tmp_path, monkeypatch):
+    def explode(*arguments):
+        raise RuntimeError("disk full")
+
+    out = tmp_path / "probes.json"
+    monkeypatch.setattr(eggdrop_probe, "probe", explode)
+    monkeypatch.setattr(sys, "argv", ["probe", str(out), "a.example:+6697"])
+    eggdrop_probe.main()
+    body = json.loads(out.read_text())
+    assert body["error"] == "RuntimeError: disk full"
+    assert isinstance(body["at"], int)
+    assert "results" not in body

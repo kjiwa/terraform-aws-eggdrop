@@ -323,13 +323,13 @@ def test_windows_are_read_newest_first_until_every_server_has_both():
 
 
 def test_a_window_that_hits_the_page_cap_is_flagged_by_name():
-    capped = [log_page([], token=f"t{n}") for n in range(5)]
+    capped = [log_page([], token=f"t{n}") for n in range(plugin.EVENT_MAX_PAGES)]
     facts = run_windows([capped, [log_page([])], [log_page([])]])
     assert all(row["caption"] == "truncated in 1 h" for row in facts["rows"])
 
 
 def test_every_capped_window_is_named():
-    capped = [log_page([], token=f"t{n}") for n in range(5)]
+    capped = [log_page([], token=f"t{n}") for n in range(plugin.EVENT_MAX_PAGES)]
     facts = run_windows([capped, [log_page([])], capped])
     assert all(row["caption"] == "truncated in 1 h, 6-24 h" for row in facts["rows"])
 
@@ -343,7 +343,7 @@ def test_a_short_history_is_not_truncated():
 
 def test_truncation_follows_the_failure_caption():
     capped = [log_page([(NOW - 60, "failed a.example.net:+6697 down")], token="t0")]
-    capped += [log_page([], token=f"t{n}") for n in range(1, 5)]
+    capped += [log_page([], token=f"t{n}") for n in range(1, plugin.EVENT_MAX_PAGES)]
     facts = run_windows([capped, [log_page([])], [log_page([])]])
     assert facts["rows"][0]["caption"].endswith("down; truncated in 1 h")
 
@@ -390,3 +390,113 @@ def test_probe_caption_follows_the_failure_caption():
     assert facts["rows"][0]["caption"].endswith(
         f"down; probe tls {plugin.clock(NOW - 600)}"
     )
+
+
+def test_a_busy_window_is_read_past_five_pages_without_truncation():
+    pages = [log_page([], token=f"t{n}") for n in range(6)]
+    pages.append(log_page([(NOW - 60, "accepted a.example.net:+6697 a1")]))
+    facts = run_windows([pages, [log_page([])], [log_page([])]])
+    assert facts["rows"][0]["value"] == f"accepted {plugin.clock(NOW - 60)}"
+    assert "caption" not in facts["rows"][0]
+
+
+def test_a_window_keeps_only_its_newest_events(monkeypatch):
+    monkeypatch.setattr(plugin, "EVENT_KEEP", 1)
+    pages = [
+        log_page([(NOW - 3000, "failed a.example.net:+6697 old")], token="t0"),
+        log_page([(NOW - 100, "accepted a.example.net:+6697 a1")]),
+    ]
+    facts = run_windows([pages, [log_page([])], [log_page([])]])
+    assert "caption" not in facts["rows"][0]
+    assert facts["rows"][0]["value"] == f"accepted {plugin.clock(NOW - 100)}"
+
+
+def test_both_sections_share_one_roster_read():
+    logs, logs_stub = stubbed("logs")
+    for number in range(3):
+        logs_stub.add_response("filter_log_events", log_page([]), log_params(number))
+    autoscaling, autoscaling_stub = stubbed("autoscaling")
+    s3, s3_stub = stubbed("s3")
+    stub_group(autoscaling_stub, ["i-1", "i-2"])
+    for instance_id in ("i-1", "i-2"):
+        s3_stub.add_response(
+            "get_object",
+            object_response(snapshot()),
+            {"Bucket": BUCKET, "Key": f"bots/{instance_id}.json"},
+        )
+    with (
+        logs_stub,
+        autoscaling_stub,
+        s3_stub,
+        patch_clients(logs=logs, autoscaling=autoscaling, s3=s3),
+        mock.patch.object(plugin.time, "time", return_value=NOW),
+    ):
+        sections = plugin.sections()
+        bots, servers = sections["bots"](), sections["servers"]()
+    assert len(bots["rows"]) == 2
+    assert len(servers["rows"]) == 3
+
+
+GOOD = {"ok": True, "seconds": 1.0}
+MALFORMED = [
+    "text",
+    ["list"],
+    {"results": {SERVERS[0]: GOOD}},
+    {"at": "soon", "results": {SERVERS[0]: GOOD}},
+    {"at": True, "results": {SERVERS[0]: GOOD}},
+    {"at": 1e30, "results": {SERVERS[0]: GOOD}},
+    {"at": NOW, "results": ["list"]},
+    {"at": NOW, "results": {SERVERS[0]: "text"}},
+    {"at": NOW, "results": {SERVERS[0]: {"seconds": 1.0}}},
+    {"at": NOW, "results": {SERVERS[0]: {"ok": True}}},
+    {"at": NOW, "results": {SERVERS[0]: {"ok": True, "seconds": "fast"}}},
+    {"at": NOW, "results": {SERVERS[0]: {"ok": False}}},
+    {"at": NOW, "results": {SERVERS[0]: {"ok": False, "error": 5}}},
+]
+
+
+@pytest.mark.parametrize("block", MALFORMED)
+def test_a_malformed_probe_block_never_breaks_the_servers_section(block):
+    facts = run_windows(
+        [[log_page([])], [log_page([])], [log_page([])]],
+        {"i-1": snapshot(probes=block)},
+    )
+    assert len(facts["rows"]) == 3
+    assert "caption" not in facts["rows"][0]
+
+
+def test_one_malformed_result_leaves_the_others():
+    block = {
+        "at": NOW - 60,
+        "results": {SERVERS[0]: {"ok": True}, SERVERS[1]: GOOD},
+    }
+    facts = run_windows(
+        [[log_page([])], [log_page([])], [log_page([])]],
+        {"i-1": snapshot(probes=block)},
+    )
+    assert "caption" not in facts["rows"][0]
+    assert facts["rows"][1]["caption"].startswith("probe ok 1.0 s")
+
+
+def test_a_probe_that_died_is_shown_as_a_failed_probe_row():
+    block = {"at": NOW - 60, "error": "RuntimeError: disk full"}
+    facts = run_windows(
+        [[log_page([])], [log_page([])], [log_page([])]],
+        {"i-1": snapshot(probes=block)},
+    )
+    assert facts["rows"][-1] == {
+        "label": "probe",
+        "value": "failed",
+        "caption": f"RuntimeError: disk full {plugin.clock(NOW - 60)}",
+    }
+    assert len(facts["rows"]) == 4
+
+
+def test_an_older_probe_error_yields_to_newer_results():
+    old = {"at": NOW - 7200, "error": "RuntimeError: disk full"}
+    new = probes(NOW - 60, **{SERVERS[0]: GOOD})
+    facts = run_windows(
+        [[log_page([])], [log_page([])], [log_page([])]],
+        {"i-1": snapshot(probes=old), "i-2": snapshot(probes=new)},
+    )
+    assert len(facts["rows"]) == 3

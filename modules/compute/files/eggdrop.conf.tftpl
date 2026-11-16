@@ -315,9 +315,11 @@ proc eggdrop_probe_servers {minute hour day month year} {
     lassign $server host port
     lappend entries "$host:$port"
   }
-  catch {
+  if {[catch {
     exec python3 /opt/eggdrop/eggdrop-probe $eggdrop_probe_file {*}$entries \
       > /dev/null 2> /dev/null &
+  } reason]} {
+    eggdrop_server_event probe_failed "" "exec: $reason"
   }
 }
 bind time - "* * * * *" eggdrop_probe_servers

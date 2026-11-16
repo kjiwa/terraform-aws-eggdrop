@@ -8,10 +8,13 @@ Function URL. The check needs nothing from the instance, so the gate works
 while the bot is down.
 """
 
+import collections
 import datetime
+import functools
 import hmac
 import json
 import os
+import threading
 import time
 
 import boto3
@@ -31,7 +34,11 @@ EVENT_WINDOWS = (
 FAILURE_EVENTS = ("failed", "refused")
 EVENT_KINDS = ("accepted", *FAILURE_EVENTS)
 EVENT_PATTERN = " ".join(f"?{kind}" for kind in EVENT_KINDS)
-EVENT_MAX_PAGES = 5
+EVENT_MAX_PAGES = 20
+# A window keeps its newest events: the log is read oldest first.
+EVENT_KEEP = 2000
+PROBE_MAX_SECONDS = 4_000_000_000
+UNREADABLE = object()
 BOT_STATES = ("InService", "Pending:Wait", "Pending:Proceed")
 
 
@@ -106,14 +113,6 @@ def bot_row(instance_id, snapshot, now):
     }
 
 
-def instance_row(s3, instance_id, now):
-    try:
-        snapshot = read_snapshot(s3, os.environ["BOT_BUCKET"], instance_id)
-    except botocore.exceptions.ClientError:
-        return {"label": instance_id, "value": "snapshot unreadable"}
-    return bot_row(instance_id, snapshot, now)
-
-
 def bot_instance_ids():
     asg = boto3.client("autoscaling").describe_auto_scaling_groups(
         AutoScalingGroupNames=[os.environ["ASG_NAME"]]
@@ -126,33 +125,111 @@ def bot_instance_ids():
     ]
 
 
-def bots(now=None):
-    now = time.time() if now is None else now
+def read_snapshots():
+    """Instance id to its snapshot, None when it has none, UNREADABLE on an error."""
     s3 = boto3.client("s3")
-    rows = [instance_row(s3, instance_id, now) for instance_id in bot_instance_ids()]
+    snapshots = {}
+    for instance_id in bot_instance_ids():
+        try:
+            snapshots[instance_id] = read_snapshot(
+                s3, os.environ["BOT_BUCKET"], instance_id
+            )
+        except botocore.exceptions.ClientError:
+            snapshots[instance_id] = UNREADABLE
+    return snapshots
+
+
+class Roster:
+    """The bots and their snapshots, read once for the sections of one request."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._snapshots = None
+
+    def snapshots(self):
+        with self._lock:
+            if self._snapshots is None:
+                self._snapshots = read_snapshots()
+            return self._snapshots
+
+
+def instance_row(instance_id, snapshot, now):
+    if snapshot is UNREADABLE:
+        return {"label": instance_id, "value": "snapshot unreadable"}
+    return bot_row(instance_id, snapshot, now)
+
+
+def bots(now=None, roster=None):
+    now = time.time() if now is None else now
+    snapshots = (roster or Roster()).snapshots()
+    rows = [instance_row(i, snapshot, now) for i, snapshot in snapshots.items()]
     return {"title": "Bots", "rows": rows}
 
 
-def newest_probes():
-    """Per server, the newest probe of any bot: (finished at, result)."""
-    s3 = boto3.client("s3")
+def number(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError("not a number")
+    return value
+
+
+def probe_time(at):
+    if not 0 <= number(at) < PROBE_MAX_SECONDS:
+        raise ValueError("probe time out of range")
+    return at
+
+
+def probe_text(at, result):
+    probe_time(at)
+    if result["ok"] is True:
+        outcome = f"ok {number(result['seconds']):.1f} s"
+    elif result["ok"] is False and isinstance(result["error"], str):
+        outcome = result["error"]
+    else:
+        raise ValueError("probe result")
+    return f"probe {outcome} {clock(at)}"
+
+
+def probe_failure_text(block):
+    if not isinstance(block["error"], str):
+        raise TypeError("probe error")
+    return f"{block['error']} {clock(probe_time(block['at']))}"
+
+
+def newest_probes(snapshots):
+    """Per server, the newest probe of any bot: (finished at, caption). Also
+    the newest top-level probe failure as (at, caption), or None when a newer
+    result exists. A malformed block or result is skipped."""
     newest = {}
-    for instance_id in bot_instance_ids():
+    failure = None
+    for snapshot in snapshots.values():
         try:
-            snapshot = read_snapshot(s3, os.environ["BOT_BUCKET"], instance_id)
-        except botocore.exceptions.ClientError:
+            block = snapshot["probes"]
+            if "error" in block:
+                text = probe_failure_text(block)
+                if failure is None or block["at"] > failure[0]:
+                    failure = (block["at"], text)
+                continue
+            at, results = probe_time(block["at"]), block["results"]
+            if not isinstance(results, dict):
+                raise TypeError("probe results")
+        except (KeyError, TypeError, ValueError):
             continue
-        probes = (snapshot or {}).get("probes") or {}
-        for address, result in probes.get("results", {}).items():
-            if address not in newest or probes["at"] > newest[address][0]:
-                newest[address] = (probes["at"], result)
-    return newest
+        for address, result in results.items():
+            try:
+                text = probe_text(at, result)
+            except (KeyError, TypeError, ValueError):
+                continue
+            if address not in newest or at > newest[address][0]:
+                newest[address] = (at, text)
+    if failure and any(at >= failure[0] for at, _ in newest.values()):
+        failure = None
+    return newest, failure
 
 
 def read_window(logs, start_ms, end_ms):
-    """Event kinds only, oldest first; the flag says whether more remained
-    after EVENT_MAX_PAGES pages."""
-    events = []
+    """Event kinds only, oldest first, the newest EVENT_KEEP of them; the flag
+    says whether more remained after EVENT_MAX_PAGES pages."""
+    events = collections.deque(maxlen=EVENT_KEEP)
     token = None
     for _ in range(EVENT_MAX_PAGES):
         arguments = {
@@ -167,8 +244,8 @@ def read_window(logs, start_ms, end_ms):
         events.extend((e["timestamp"] / 1000, e["message"]) for e in page["events"])
         token = page.get("nextToken")
         if not token:
-            return events, False
-    return events, True
+            return list(events), False
+    return list(events), True
 
 
 def parse_event(message):
@@ -210,12 +287,6 @@ def read_events(logs, now, addresses):
     return events, capped
 
 
-def probe_text(probe):
-    at, result = probe
-    outcome = f"ok {result['seconds']:.1f} s" if result["ok"] else result["error"]
-    return f"probe {outcome} {clock(at)}"
-
-
 def server_row(address, events, capped, probe=None):
     accepted = failure = None
     for seconds, message in events:
@@ -231,7 +302,7 @@ def server_row(address, events, capped, probe=None):
         seconds, kind, text = failure
         captions.append(f"last {kind} {clock(seconds)}: {text}")
     if probe:
-        captions.append(probe_text(probe))
+        captions.append(probe[1])
     if capped:
         captions.append(f"truncated in {', '.join(capped)}")
     row = {
@@ -243,19 +314,23 @@ def server_row(address, events, capped, probe=None):
     return row
 
 
-def servers(now=None):
+def servers(now=None, roster=None):
     now = time.time() if now is None else now
     addresses = json.loads(os.environ["IRC_SERVERS"])
     events, capped = read_events(boto3.client("logs"), now, addresses)
-    probes = newest_probes()
-    return {
-        "title": "Servers",
-        "rows": [
-            server_row(address, events, capped, probes.get(address))
-            for address in addresses
-        ],
-    }
+    probes, failure = newest_probes((roster or Roster()).snapshots())
+    rows = [
+        server_row(address, events, capped, probes.get(address))
+        for address in addresses
+    ]
+    if failure:
+        rows.append({"label": "probe", "value": "failed", "caption": failure[1]})
+    return {"title": "Servers", "rows": rows}
 
 
 def sections():
-    return {"bots": bots, "servers": servers}
+    roster = Roster()
+    return {
+        "bots": functools.partial(bots, roster=roster),
+        "servers": functools.partial(servers, roster=roster),
+    }

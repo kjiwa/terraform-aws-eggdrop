@@ -4,8 +4,9 @@
 Usage: eggdrop-probe OUT_FILE HOST:+PORT...
 Each server in turn gets a TLS connection and a random nick, and no channel is
 joined. OUT_FILE holds {"at": <epoch>, "results": {"HOST:+PORT": {"ok": true,
-"seconds": 1.3} | {"ok": false, "error": "no AAAA"}}}; the status page reads it
-through the bot's snapshot (modules/status/plugin/plugin.py).
+"seconds": 1.3} | {"ok": false, "error": "no AAAA"}}}, or {"at": <epoch>,
+"error": "..."} when the probe itself failed; the status page reads it through
+the bot's snapshot (modules/status/plugin/plugin.py).
 """
 
 import json
@@ -18,6 +19,9 @@ import time
 
 WELCOME_SECONDS = 30
 ERROR_MAX_CHARS = 120
+# 465 banned, 464 bad password, 463 not permitted, 432 bad nick, 484 restricted.
+REFUSALS = ("465", "464", "463", "432", "484")
+NICK_IN_USE = "433"
 
 
 class Failure(Exception):
@@ -55,14 +59,31 @@ def read_lines(connection, deadline):
             yield line.decode(errors="replace").strip()
 
 
+def random_nick():
+    return f"p{secrets.token_hex(4)}"
+
+
+def refusal_text(numeric, line):
+    return f"{numeric} {line.partition(' :')[2]}"[:ERROR_MAX_CHARS]
+
+
 def await_welcome(connection, deadline):
+    nick_retried = False
     for line in read_lines(connection, deadline):
         words = line.split()
+        numeric = words[1] if len(words) > 1 else ""
         if line.startswith("PING"):
             connection.sendall(f"PONG {line[5:]}\r\n".encode())
-        elif line.startswith("ERROR") or (len(words) > 1 and words[1] == "ERROR"):
+        elif line.startswith("ERROR") or numeric == "ERROR":
             raise Failure(line[:ERROR_MAX_CHARS])
-        elif len(words) > 1 and words[1] == "001":
+        elif numeric in REFUSALS:
+            raise Failure(refusal_text(numeric, line))
+        elif numeric == NICK_IN_USE:
+            if nick_retried:
+                raise Failure(refusal_text(numeric, line))
+            nick_retried = True
+            connection.sendall(f"NICK {random_nick()}\r\n".encode())
+        elif numeric == "001":
             return
 
 
@@ -86,10 +107,18 @@ def connect(host, port, deadline):
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
     try:
+        raw.settimeout(max(deadline - time.monotonic(), 0.001))
         return context.wrap_socket(raw, server_hostname=host)
     except OSError as error:
         raw.close()
         raise Failure("timeout" if timed_out(error, deadline) else "tls") from None
+
+
+def quit_politely(connection):
+    try:
+        connection.sendall(b"QUIT\r\n")
+    except OSError:
+        pass
 
 
 def probe(host, port, welcome_seconds=WELCOME_SECONDS):
@@ -100,11 +129,11 @@ def probe(host, port, welcome_seconds=WELCOME_SECONDS):
     except Failure as failure:
         return {"ok": False, "error": str(failure)}
     try:
-        nick = f"p{secrets.token_hex(4)}"
+        nick = random_nick()
         connection.sendall(f"NICK {nick}\r\nUSER {nick} 0 * :{nick}\r\n".encode())
         await_welcome(connection, deadline)
         elapsed = round(time.monotonic() - started, 1)
-        connection.sendall(b"QUIT\r\n")
+        quit_politely(connection)
         return {"ok": True, "seconds": elapsed}
     except Failure as failure:
         return {"ok": False, "error": str(failure)}
@@ -119,8 +148,8 @@ def parse_server(entry):
     return host, int(port.lstrip("+"))
 
 
-def write_results(path, results, now=None):
-    body = {"at": int(time.time() if now is None else now), "results": results}
+def write_body(path, fields, now=None):
+    body = {"at": int(time.time() if now is None else now), **fields}
     temporary = f"{path}.tmp"
     with open(temporary, "w") as out:
         json.dump(body, out)
@@ -129,8 +158,12 @@ def write_results(path, results, now=None):
 
 def main():
     path, entries = sys.argv[1], sys.argv[2:]
-    results = {entry: probe(*parse_server(entry)) for entry in entries}
-    write_results(path, results)
+    try:
+        results = {entry: probe(*parse_server(entry)) for entry in entries}
+        write_body(path, {"results": results})
+    except Exception as error:  # noqa: BLE001 - any death must reach the status page
+        text = f"{type(error).__name__}: {error}"
+        write_body(path, {"error": text[:ERROR_MAX_CHARS]})
 
 
 if __name__ == "__main__":
