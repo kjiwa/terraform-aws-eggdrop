@@ -43,6 +43,7 @@ locals {
     "config/eggdrop.conf" = templatefile("${path.module}/files/eggdrop.conf.tftpl", {
       nicks               = var.nicks
       irc_servers         = var.irc_servers
+      net_type            = var.net_type
       asg_name            = local.name
       log_group           = local.log_group_name
       slot_gate_seconds   = local.slot_gate_seconds

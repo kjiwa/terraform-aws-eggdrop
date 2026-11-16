@@ -44,6 +44,7 @@ variables {
   zone_id     = "Z0000000000000TEST"
   alert_email = "ops@example.com"
   irc_servers = [{ host = "irc.example.net" }]
+  net_type    = "EFnet"
   channels    = { "#example" = { ops = ["alice"] } }
   users       = { alice = ["*!*alice@2001:db8:1:2??:*"] }
   owner       = "alice"
@@ -84,6 +85,19 @@ run "owner_must_be_a_user" {
   }
 
   expect_failures = [var.owner]
+}
+
+run "net_type_must_be_an_eggdrop_name" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    net_type = "Efnet2"
+  }
+
+  expect_failures = [var.net_type]
 }
 
 run "irc_servers_must_not_be_empty" {

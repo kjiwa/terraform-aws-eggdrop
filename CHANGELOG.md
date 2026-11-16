@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.9.0
+
+### Added
+
+- `net_type` (required): Eggdrop's `net-type` for the network of `irc_servers`, one of EFnet, IRCnet, Undernet, DALnet, Libera, freenode, QuakeNet, Rizon or Other. It was hard-coded to EFnet.
+- Each bot's ident (`username`) and realname follow its nick, and a bot that claims a listed nick sets both to it, applied at its next connect. Before, every bot connected as `<nick>!~<first nick>`.
+
+### Removed
+
+- `admin` and `network` from the config. Neither was visible: the module has no `listen` line and no inbound path.
+
+### Upgrade
+
+- `net_type` is required. Set `net_type = "EFnet"` for the old behavior.
+- Boot files change, so the apply refreshes the bots one at a time.
+
 ## v0.8.1
 
 ### Added

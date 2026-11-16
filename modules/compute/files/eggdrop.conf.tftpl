@@ -16,11 +16,9 @@ if {[info exists botnick] && [lsearch -exact -nocase $eggdrop_nicks $botnick] >=
   set nick "${nicks[0]}"
 }
 set altnick "${nicks[0]}?"
-set realname "${nicks[0]}"
-set username "${nicks[0]}"
-set admin "${nicks[0]}"
-set network "EFnet"
-set net-type "EFnet"
+set username $nick
+set realname $nick
+set net-type "${net_type}"
 
 # IPv4 is routed only with ipv4_enabled. Takes the AAAA record when the server
 # has one, else the A record.
@@ -240,7 +238,8 @@ bind raw - 465 eggdrop_raw_refused
 
 # Every bot boots as the first nick. One that holds no listed name claims the
 # first listed name no one in its channels wears; set nick also moves
-# keep-nick's target to the claimed name.
+# keep-nick's target to the claimed name. The new ident and realname apply at
+# the next connect.
 proc eggdrop_claim_nick {minute hour day month year} {
   global eggdrop_nicks botnick
   if {![eggdrop_up] || [lsearch -exact -nocase $eggdrop_nicks $botnick] >= 0} {
@@ -260,6 +259,8 @@ proc eggdrop_claim_nick {minute hour day month year} {
     }
     if {!$taken} {
       set ::nick $name
+      set ::username $name
+      set ::realname $name
       return
     }
   }

@@ -14,6 +14,7 @@ module "eggdrop" {
   alert_email = var.alert_email
 
   irc_servers = [{ host = "irc.example.net" }]
+  net_type    = "EFnet"
   channels    = { "#example" = { ops = ["alice"] } }
   users       = { alice = ["*!*alice@2001:db8:1:2??:*"] }
   owner       = "alice"

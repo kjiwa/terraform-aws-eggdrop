@@ -88,6 +88,16 @@ variable "channels" {
   }))
 }
 
+variable "net_type" {
+  description = "Eggdrop's net-type for the network of irc_servers."
+  type        = string
+
+  validation {
+    condition     = contains(["EFnet", "IRCnet", "Undernet", "DALnet", "Libera", "freenode", "QuakeNet", "Rizon", "Other"], var.net_type)
+    error_message = "net_type must be one of EFnet, IRCnet, Undernet, DALnet, Libera, freenode, QuakeNet, Rizon or Other, because Eggdrop accepts only those names (Twitch needs a module this bot does not load)."
+  }
+}
+
 variable "users" {
   description = "Handle to hostmasks (nick!ident@host patterns) of the people the bot recognises."
   type        = map(list(string))

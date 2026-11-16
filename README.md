@@ -31,6 +31,7 @@ module "eggdrop" {
   alert_email = "ops@example.com"
 
   irc_servers = [{ host = "irc.example.net" }]
+  net_type    = "EFnet"
   channels    = { "#example" = { ops = ["alice"] } }
   users       = { alice = ["*!*alice@2001:db8:1:2??:*"] }
   owner       = "alice"
@@ -46,6 +47,7 @@ See `examples/minimal`. Pin a literal `?ref=vX.Y.Z`; before 1.0 a minor release 
 | `domain_name`, `zone_id` | Apex domain for the status page and its Route 53 zone. |
 | `alert_email` | Receives the DOWN and RECOVERED emails. |
 | `irc_servers` | List of `{ host, port = 6697 }` for one IRC network: 1 to 50 unique pairs, tried in order, wrapping at the end. TLS over IPv6, so each host needs an AAAA record unless `ipv4_enabled`. Egress opens once per distinct port. |
+| `net_type` | Eggdrop's `net-type` for the network of `irc_servers`: EFnet, IRCnet, Undernet, DALnet, Libera, freenode, QuakeNet, Rizon or Other. Each bot's ident and realname follow its claimed nick from its next connect. |
 | `channels` | Channels to join, each with `ops`: the handles in `users` the bot ops there. |
 | `users` | Handle to hostmask patterns of the people the bot recognises. |
 | `owner` | The handle in `users` that may request a status page link. It gets no ops unless a channel lists it. |
