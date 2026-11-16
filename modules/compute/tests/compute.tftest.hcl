@@ -47,6 +47,7 @@ variables {
   bots                    = 2
   subnet_ipv6_cidr_blocks = ["2001:db8:1:0::/64", "2001:db8:1:1::/64"]
   irc_servers             = [{ host = "irc.example.net", port = 6697 }]
+  net_type                = "IRCnet"
   channels                = { "#example" = { ops = ["alice", "bob"] }, "#second" = { ops = ["bob"] } }
   users                   = { alice = ["*!*alice@2001:db8:1:2??:*", "*!*alice@host.example"], bob = ["*!*bob@host.example"] }
   owner                   = "alice"
@@ -393,6 +394,34 @@ run "one_server_has_no_slot_jump" {
     condition     = !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "eggdrop_take_server") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "proc eggdrop_on_slot_server")
     error_message = "With one server there is nowhere to move, so the jump proc is not rendered; the heartbeat's slot check still resolves."
   }
+}
+
+run "bots_connect_as_their_claimed_nick" {
+  command = plan
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set net-type \"IRCnet\"") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set username $nick") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set realname $nick")
+    error_message = "The network type comes from net_type, and the ident and realname follow the nick."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set ::username $name")
+    error_message = "A claimed nick must also set the ident and realname."
+  }
+
+  assert {
+    condition     = !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "EFnet") && !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set admin") && !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set network")
+    error_message = "The config must name no network and set no admin."
+  }
+}
+
+run "net_type_must_be_an_eggdrop_name" {
+  command = plan
+  variables {
+    net_type = "Efnet2"
+  }
+
+  expect_failures = [var.net_type]
 }
 
 run "empty_server_list_is_rejected" {

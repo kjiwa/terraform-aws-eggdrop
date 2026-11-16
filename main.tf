@@ -21,6 +21,7 @@ module "compute" {
   nicks                   = var.nicks
   bots                    = var.bots
   irc_servers             = var.irc_servers
+  net_type                = var.net_type
   channels                = var.channels
   users                   = var.users
   owner                   = var.owner
