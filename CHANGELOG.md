@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.6.0
+
+### Changed
+
+- With more than one `irc_servers` entry, the bot wearing `nicks[i]` moves to `irc_servers[i mod length]`, so one server's outage leaves the other bot opped. Bots jump on staggered minutes (the minute modulo the bot count equals the slot), at most once per 30 minutes, and only while another listed bot is opped in every channel (at least one); a bot that failed over returns to its slot server after the gate. With one entry the rendered config is unchanged. A bot with no listed name stays where it is.
+- Status page modules at v0.8.0.
+
+### Upgrade
+
+- The bots on a list of two or more servers move to their slot servers one minute after they claim a name. The servers must be one network: on separate networks each bot sees only itself, `GroupSize` reads 1 and the `eggdrop-group-size` alarm fires.
+- Status page v0.8.0 changes the payload shape; the apply redeploys the status Lambda and web build.
+
 ## v0.5.0
 
 ### Changed

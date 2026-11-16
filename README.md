@@ -89,6 +89,8 @@ Each bot publishes the `SiteUp` metric every minute while it is connected to the
 
 Each bot also publishes `GroupSize` in the same call: how many of the `nicks` are in any of its channels, itself included. The `eggdrop-group-size` alarm fires when the smallest value stays below `min(bots, length(nicks))` for 20 minutes, and treats silence as below. It mails the status page's alert topic, and costs about 0.40 USD a month (one custom metric and one alarm, not measured). It catches a dead bot, a bot that cannot connect, a bot on another network and a split between the bots. It is off while `active` is false.
 
+With more than one `irc_servers` entry, the bots spread over the servers by nick slot, so one server's outage or restart leaves the other bot connected and opped, and the dropped bot cycles on and is re-opped by its peer. A split between their servers leaves an opped bot on each side. The slot rule needs the servers to be one network: on separate networks each bot sees only itself, `GroupSize` reads 1 and the alarm fires.
+
 The status page gate verifies the token in a Lambda with a key in SSM, so it works while the bot is down.
 
 ## Cost
@@ -114,8 +116,8 @@ Unit tests cannot start a bot. Before a release, build Eggdrop on Amazon Linux 2
 - Bots recognise each other by IPv6 address range. A bot connected over IPv4 (`ipv4_enabled`) is not recognised and is not opped by its peers.
 - The launch hook is a separate resource, so on the first apply of a version that adds it the group's first instances can launch before it exists.
 - A dead or wrong host in `irc_servers` costs a bot one connection attempt before it moves on; the cycle wait is about a minute. If no host answers, no bot connects and the `SiteUp` alarm fires.
-- A server outage moves every bot to the next listed server together. Ops survive only if someone else holds the channel; otherwise the first bot to join the empty channel gets ops and the peers op each other.
-- All bots use the same list in the same order, so one server outage takes them all off at once. Per-bot servers are not supported: the bots are interchangeable.
+- With several servers, the bot wearing `nicks[i]` moves to `irc_servers[i mod length]` and jumps at most once per 30 minutes, so one server outage leaves the other bot on its own server. A bot whose slot server is down cycles on to the next listed server and tries its slot server again after 30 minutes, so a down slot server costs one reconnect per 30 minutes at most. Bots with no listed name stay where they are. With fewer servers than names the index wraps. While the bots share a server (one entry, or before the jump), an outage moves them to the next listed server together; ops survive only if someone else holds the channel, otherwise the first bot to join the empty channel gets ops and the peers op each other.
+- Bots jump on staggered minutes (the minute modulo the bot count equals the slot), so never two at once. A bot jumps only while another listed bot is opped in every channel (at least one channel), so moving never drops the last op. Without one it stays on its current server.
 - A server split leaves each side with its bots, and the channel merge deops one side when the split heals. The peers op each other afterwards. `GroupSize` is the only signal.
 - A list that mixes networks can land the bots on different networks, each seeing an empty channel and opping itself. `SiteUp` stays 1; only the `GroupSize` alarm notices.
 - Nick collisions after a replacement: the old nick lingers on the server until it times out. The bot takes its alternate nick and reclaims the primary.
