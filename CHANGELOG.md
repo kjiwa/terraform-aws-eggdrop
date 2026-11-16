@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.8.0
+
+### Added
+
+- Server probe: once a day, from 10 minutes after its welcome and on its slot minute, each bot resolves the AAAA record of every `irc_servers` entry, connects over TLS with a random nick, waits up to 30 s for the welcome and quits, never joining a channel and in the background. The result is in the bot's snapshot (`probes`), and the status page's Servers section shows the newest probe across bots per entry. The probe is a boot file, `eggdrop-probe`.
+- The probe fails fast on a registration refusal (463, 464, 465, 432, 484, `ERROR`) with the numeric and text, retries a nick in use (433) once, keeps the whole entry inside its 30 s, and ignores a failed `QUIT` after a welcome. If it dies it writes `probes.json` with a top-level `error`, and the status page shows a `probe` row in Servers; a failed exec logs a `probe_failed` line to the server event log. A malformed probe block is skipped.
+- The Bots and Servers sections share one read of the group and the snapshots per request.
+- The roster script stubs each config symbol it uses (`eggdrop_on_slot_server`, `eggdrop_instance_id`, `eggdrop_json_string`, `eggdrop_probes_json`, `eggdrop_nicks`) and skips the snapshot without `EGGDROP_BUCKET`, so it applies in place to a bot whose config is a release older. On v0.7.0 a v0.6.0 config made every heartbeat fail, so `SiteUp` stopped.
+
+### Changed
+
+- `server-timeout` is 20 s (Eggdrop's default is 60): a dead `irc_servers` entry costs 20 s.
+- The Servers section reads the log newest first in three windows (1 h, 1 to 6 h, 6 to 24 h) and stops when every entry has an accept and a failure, so a busy log no longer hides the latest accept. A window is read up to 20 pages and keeps its newest 2000 events (the log returns oldest first, so the newest are never the ones dropped); one that still has pages left is named as truncated.
+
+### Upgrade
+
+- Boot files change, so the apply refreshes the bots one at a time.
+- Each listed server sees one more short connection a day per bot.
+
 ## v0.7.0
 
 ### Added

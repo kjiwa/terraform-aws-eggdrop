@@ -108,6 +108,7 @@ fetch_config() {
   retry aws s3 cp "s3://$BUCKET/config/eggdrop.conf" "$HOME_DIR/eggdrop.conf"
   retry aws s3 cp "s3://$BUCKET/config/eggdrop.tcl" "$HOME_DIR/scripts/eggdrop.tcl"
   retry aws s3 cp "s3://$BUCKET/config/eggdrop-token" "$HOME_DIR/eggdrop-token"
+  retry aws s3 cp "s3://$BUCKET/config/eggdrop-probe" "$HOME_DIR/eggdrop-probe"
   retry aws s3 cp "s3://$BUCKET/secret/status.key" "$HOME_DIR/status.key"
   retry aws s3 cp "s3://$BUCKET/config/eggdrop-spot-drain" /usr/local/bin/eggdrop-spot-drain
   retry aws s3 cp "s3://$BUCKET/config/eggdrop-config-sync" /usr/local/bin/eggdrop-config-sync

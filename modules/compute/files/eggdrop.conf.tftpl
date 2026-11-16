@@ -25,6 +25,9 @@ set net-type "EFnet"
 # IPv4 is routed only with ipv4_enabled. Takes the AAAA record when the server
 # has one, else the A record.
 set prefer-ipv6 1
+
+# Eggdrop's default is 60 s. A dead entry costs 20 s of failover time, not 60.
+set server-timeout 20
 %{ for server in irc_servers ~}
 server add ${server.host} +${server.port}
 %{ endfor ~}
@@ -268,6 +271,59 @@ proc eggdrop_take_server {minute hour day month year} {
 bind time - "* * * * *" eggdrop_take_server
 
 %{ endif ~}
+# Whether each listed server welcomes this bot is probed once a day and kept
+# in eggdrop_probe_file for the snapshot. A probe never joins a channel. It runs
+# in the background so PING replies are not blocked, on the bot's own slot
+# minute, and only once the bot has been online 10 min; eggdrop_probe_started
+# holds a probe that wrote nothing back for an hour.
+set eggdrop_probe_file "/opt/eggdrop/probes.json"
+if {![info exists eggdrop_probe_started]} {
+  set eggdrop_probe_started 0
+}
+
+proc eggdrop_probes_json {} {
+  global eggdrop_probe_file
+  if {[catch {open $eggdrop_probe_file} file]} {
+    return "\{\}"
+  }
+  set body [string trim [read $file]]
+  close $file
+  if {$body eq ""} {
+    return "\{\}"
+  }
+  return $body
+}
+
+proc eggdrop_probe_servers {minute hour day month year} {
+  global eggdrop_nicks eggdrop_servers eggdrop_probe_file eggdrop_probe_started
+  set now [unixtime]
+  if {![eggdrop_up] || [eggdrop_slot] < 0 || $now - [set ::server-online] < 600} {
+    return
+  }
+  if {[scan $minute %d] % [llength $eggdrop_nicks] != [eggdrop_slot]} {
+    return
+  }
+  if {$now - $eggdrop_probe_started < 3600} {
+    return
+  }
+  if {[file exists $eggdrop_probe_file] && $now - [file mtime $eggdrop_probe_file] < 86400} {
+    return
+  }
+  set eggdrop_probe_started $now
+  set entries {}
+  foreach server $eggdrop_servers {
+    lassign $server host port
+    lappend entries "$host:$port"
+  }
+  if {[catch {
+    exec python3 /opt/eggdrop/eggdrop-probe $eggdrop_probe_file {*}$entries \
+      > /dev/null 2> /dev/null &
+  } reason]} {
+    eggdrop_server_event probe_failed "" "exec: $reason"
+  }
+}
+bind time - "* * * * *" eggdrop_probe_servers
+
 # Releases this instance's launch hook once the bot is in every channel, or
 # 300 s after connecting. The guard keeps a rehash from running it again. A
 # failed call is retried a few times: an instance that is no longer waiting
