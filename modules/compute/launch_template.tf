@@ -35,6 +35,7 @@ resource "aws_launch_template" "this" {
     bucket          = aws_s3_bucket.this.id
     eggdrop_version = var.eggdrop.version
     eggdrop_sha256  = var.eggdrop.sha256
+    log_group       = local.log_group_name
     config_hash     = local.config_hash
   }))
 

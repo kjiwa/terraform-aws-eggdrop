@@ -48,6 +48,9 @@ module "status" {
   domain_name                  = var.domain_name
   distribution_arn             = module.edge.distribution_arn
   asg_name                     = module.compute.asg_name
+  bot_bucket                   = module.compute.bucket_name
+  irc_log_group                = module.compute.irc_log_group_name
+  irc_servers                  = var.irc_servers
   episodes_log_group           = module.monitoring.episodes_log_group_name
   spot_interruptions_log_group = module.monitoring.spot_interruptions_log_group_name
   metric_namespace             = local.metric_namespace

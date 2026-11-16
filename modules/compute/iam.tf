@@ -61,6 +61,21 @@ data "aws_iam_policy_document" "instance" {
       values   = [var.metric_namespace]
     }
   }
+
+  # Each bot writes its own snapshot, which the status page reads.
+  statement {
+    sid       = "WriteBotSnapshot"
+    effect    = "Allow"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.this.arn}/bots/*"]
+  }
+
+  statement {
+    sid       = "WriteServerEvents"
+    effect    = "Allow"
+    actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = ["${aws_cloudwatch_log_group.irc.arn}:*"]
+  }
 }
 
 resource "aws_iam_role_policy" "instance" {

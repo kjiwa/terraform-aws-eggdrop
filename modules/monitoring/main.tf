@@ -1,6 +1,7 @@
 locals {
   # Named here, not read from the alarm, which needs the topic this feeds.
   group_size_alarm_name = "eggdrop-group-size"
+  on_slot_alarm_name    = "eggdrop-on-slot-server"
 }
 
 # canary_enabled is false: the bot publishes SiteUp itself every minute, and
@@ -22,7 +23,7 @@ module "availability" {
   # disconnect spans at least one heartbeat.
   site_down_alarm = { datapoints_to_alarm = 1 }
 
-  alarm_publishers = concat(module.host_alarms.alarm_names, [local.group_size_alarm_name])
+  alarm_publishers = concat(module.host_alarms.alarm_names, [local.group_size_alarm_name, local.on_slot_alarm_name])
 }
 
 module "host_alarms" {
@@ -53,6 +54,26 @@ resource "aws_cloudwatch_metric_alarm" "group_size" {
   comparison_operator = "LessThanThreshold"
   threshold           = var.group_size
   treat_missing_data  = "breaching"
+  alarm_actions       = [module.availability.sns_topic_arn]
+  ok_actions          = [module.availability.sns_topic_arn]
+}
+
+# Minimum over a minute is the smallest value any bot reports; 60 periods
+# outlast two jump gates (1800 s). Silence is not a breach: SiteUp covers it.
+resource "aws_cloudwatch_metric_alarm" "on_slot_server" {
+  count = var.active ? 1 : 0
+
+  alarm_name          = local.on_slot_alarm_name
+  alarm_description   = "A bot has been off its slot server for 60 minutes: its slot server refuses it, or it cannot return."
+  namespace           = var.metric_namespace
+  metric_name         = "OnSlotServer"
+  statistic           = "Minimum"
+  period              = 60
+  evaluation_periods  = 60
+  datapoints_to_alarm = 60
+  comparison_operator = "LessThanThreshold"
+  threshold           = 1
+  treat_missing_data  = "notBreaching"
   alarm_actions       = [module.availability.sns_topic_arn]
   ok_actions          = [module.availability.sns_topic_arn]
 }

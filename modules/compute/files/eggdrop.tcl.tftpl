@@ -122,20 +122,67 @@ proc eggdrop_group_size {} {
   return $size
 }
 
+# OnSlotServer is 0 while the bot sits off its slot server: GroupSize reads
+# the same with both bots on one server.
 proc eggdrop_heartbeat {minute hour day month year} {
   global eggdrop_region eggdrop_namespace
   if {![eggdrop_up]} {
     return
   }
   set size [eggdrop_group_size]
+  set on_slot [eggdrop_on_slot_server]
   catch {
     exec aws cloudwatch put-metric-data --region $eggdrop_region \
       --namespace $eggdrop_namespace \
-      --metric-data MetricName=SiteUp,Value=1 MetricName=GroupSize,Value=$size \
+      --metric-data MetricName=SiteUp,Value=1 MetricName=GroupSize,Value=$size MetricName=OnSlotServer,Value=$on_slot \
       > /dev/null 2> /dev/null &
   }
 }
 bind time - "* * * * *" eggdrop_heartbeat
+
+proc eggdrop_channel_json {channel} {
+  set joined [botonchan $channel]
+  set opped [expr {$joined && [botisop $channel]}]
+  set members [expr {$joined ? [llength [chanlist $channel]] : 0}]
+  return "\{\"name\":[eggdrop_json_string $channel],\"joined\":[expr {$joined ? "true" : "false"}],\"opped\":[expr {$opped ? "true" : "false"}],\"members\":$members\}"
+}
+
+# What the status page shows of this bot. "updated" is left out here so that
+# an unchanged bot compares equal.
+proc eggdrop_snapshot_body {} {
+  set channels {}
+  foreach channel [lsort [channels]] {
+    lappend channels [eggdrop_channel_json $channel]
+  }
+  set online [set ::server-online]
+  return "\"nick\":[eggdrop_json_string $::botnick],\"botname\":[eggdrop_json_string $::botname],\"server_entry\":[eggdrop_json_string $::serveraddress],\"server_name\":[eggdrop_json_string $::server],\"online_since\":$online,\"on_slot\":[expr {[eggdrop_on_slot_server] ? "true" : "false"}],\"channels\":\[[join $channels ,]\]"
+}
+
+if {![info exists eggdrop_snapshot_last]} {
+  set eggdrop_snapshot_last ""
+  set eggdrop_snapshot_at 0
+}
+
+# Written to bots/<instance-id>.json when it changes and at least every 900 s.
+# Unlike the heartbeat it also runs while disconnected.
+proc eggdrop_snapshot {minute hour day month year} {
+  global eggdrop_snapshot_last eggdrop_snapshot_at
+  set body [eggdrop_snapshot_body]
+  set now [unixtime]
+  if {$body eq $eggdrop_snapshot_last && $now - $eggdrop_snapshot_at < 900} {
+    return
+  }
+  set json "\{$body,\"updated\":$now\}"
+  if {![catch {
+    exec aws s3 cp - s3://$::env(EGGDROP_BUCKET)/bots/$::env(EGGDROP_INSTANCE_ID).json \
+      --content-type application/json --only-show-errors << $json \
+      > /dev/null 2> /dev/null &
+  }]} {
+    set eggdrop_snapshot_last $body
+    set eggdrop_snapshot_at $now
+  }
+}
+bind time - "* * * * *" eggdrop_snapshot
 
 proc eggdrop_status {nick uhost handle text} {
   global eggdrop_domain eggdrop_owner eggdrop_token_ttl

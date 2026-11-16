@@ -69,3 +69,29 @@ run "group_size_alarm_sleeps_with_the_environment" {
     error_message = "An inactive environment has no group size alarm."
   }
 }
+
+run "on_slot_alarm_waits_two_jump_gates_and_ignores_silence" {
+  command = plan
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.on_slot_server[0].namespace == "Eggdrop" && aws_cloudwatch_metric_alarm.on_slot_server[0].metric_name == "OnSlotServer" && aws_cloudwatch_metric_alarm.on_slot_server[0].statistic == "Minimum" && aws_cloudwatch_metric_alarm.on_slot_server[0].comparison_operator == "LessThanThreshold" && aws_cloudwatch_metric_alarm.on_slot_server[0].threshold == 1
+    error_message = "The alarm must fire when the minimum OnSlotServer drops below 1."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.on_slot_server[0].period == 60 && aws_cloudwatch_metric_alarm.on_slot_server[0].evaluation_periods == 60 && aws_cloudwatch_metric_alarm.on_slot_server[0].datapoints_to_alarm == 60 && aws_cloudwatch_metric_alarm.on_slot_server[0].treat_missing_data == "notBreaching"
+    error_message = "The alarm needs 60 consecutive one-minute breaches, and silence is not one."
+  }
+}
+
+run "on_slot_alarm_is_off_while_inactive" {
+  command = plan
+  variables {
+    active = false
+  }
+
+  assert {
+    condition     = length(aws_cloudwatch_metric_alarm.on_slot_server) == 0
+    error_message = "No alarm while the group is scaled to zero."
+  }
+}

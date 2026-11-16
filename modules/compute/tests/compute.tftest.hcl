@@ -21,6 +21,12 @@ override_resource {
 }
 
 override_resource {
+  target          = aws_cloudwatch_log_group.irc
+  override_during = plan
+  values          = { arn = "arn:aws:logs:us-west-2:123456789012:log-group:/eggdrop/irc" }
+}
+
+override_resource {
   target          = aws_launch_template.this["x86_64"]
   override_during = plan
   values          = { id = "lt-0123456789abcdef0", latest_version = 1 }
@@ -370,17 +376,22 @@ run "servers_are_taken_by_nick_slot" {
   }
 
   assert {
-    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "proc eggdrop_take_server") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "string equal -nocase $::serveraddress \"$host:$port\"") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "bind time - \"* * * * *\" eggdrop_take_server") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "[scan $minute %d] % [llength $eggdrop_nicks] != $slot") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "[llength [channels]] == 0") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "[unixtime] - $eggdrop_moved_at < 1800") && !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "eggdrop_moved_for")
-    error_message = "The slot proc runs each minute, staggers by slot, gates on time and channels, and compares serveraddress ignoring case."
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "proc eggdrop_take_server") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "[eggdrop_on_slot_server]") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "bind time - \"* * * * *\" eggdrop_take_server") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "[scan $minute %d] % [llength $eggdrop_nicks] != [eggdrop_slot]") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "[llength [channels]] == 0") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "[unixtime] - $eggdrop_moved_at < 1800") && !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "eggdrop_moved_for")
+    error_message = "The slot proc runs each minute, staggers by slot, gates on time and channels, and skips a bot already on its slot server."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "string equal -nocase $::serveraddress \"$host:$port\"") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "proc eggdrop_slot_server")
+    error_message = "One proc finds the slot server, and the comparison with serveraddress ignores case."
   }
 }
 
-run "one_server_has_no_slot_proc" {
+run "one_server_has_no_slot_jump" {
   command = plan
 
   assert {
-    condition     = !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "eggdrop_servers") && !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "eggdrop_take_server")
-    error_message = "With one server there is nowhere to move, so neither the list nor the proc is rendered."
+    condition     = !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "eggdrop_take_server") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "proc eggdrop_on_slot_server")
+    error_message = "With one server there is nowhere to move, so the jump proc is not rendered; the heartbeat's slot check still resolves."
   }
 }
 
@@ -444,6 +455,86 @@ run "heartbeat_sends_group_size_with_site_up" {
   assert {
     condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "MetricName=SiteUp,Value=1 MetricName=GroupSize,Value=$size") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "[onchan $nick $channel]") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "foreach nick $eggdrop_nicks")
     error_message = "The heartbeat must send SiteUp and GroupSize in one call, counting the listed nicks on the bot's channels."
+  }
+}
+
+run "heartbeat_reports_the_slot_server" {
+  command = plan
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "MetricName=OnSlotServer,Value=$on_slot") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "set on_slot [eggdrop_on_slot_server]")
+    error_message = "The heartbeat must publish OnSlotServer from the same lookup the jump uses."
+  }
+}
+
+run "server_events_go_to_the_log_group" {
+  command = plan
+
+  assert {
+    condition     = aws_cloudwatch_log_group.irc.name == "/eggdrop/irc" && aws_cloudwatch_log_group.irc.retention_in_days == 30
+    error_message = "Server events go to /eggdrop/irc, kept 30 days."
+  }
+
+  assert {
+    condition = alltrue([
+      for bind in [
+        "bind evnt - init-server eggdrop_event_accepted",
+        "bind evnt - disconnect-server eggdrop_event_disconnected",
+        "bind log - {* Trying server *} eggdrop_log_trying",
+        "bind log - {* Failed connect to *} eggdrop_log_failed",
+        "bind log - {* Timeout: connect *} eggdrop_log_failed",
+        "bind log - {* Disconnected from *} eggdrop_log_dropped",
+        "bind raw - ERROR* eggdrop_raw_refused",
+        "bind raw - 463 eggdrop_raw_refused",
+        "bind raw - 465 eggdrop_raw_refused",
+      ] : strcontains(aws_s3_object.config["config/eggdrop.conf"].content, bind)
+    ])
+    error_message = "Every server event and refusal numeric must be bound."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set eggdrop_log_group \"/eggdrop/irc\"") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "--log-stream-name $::env(EGGDROP_INSTANCE_ID)") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "> /dev/null 2> /dev/null &")
+    error_message = "Each event goes to the instance's stream, in the background."
+  }
+
+  assert {
+    condition     = strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "aws logs create-log-stream") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "Environment=EGGDROP_INSTANCE_ID=$INSTANCE_ID") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "readonly LOG_GROUP=\"/eggdrop/irc\"")
+    error_message = "Boot creates the instance's log stream and hands its name to the bot."
+  }
+
+  assert {
+    condition     = !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "bind pub") && !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "bind pubm") && !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "bind msgm")
+    error_message = "No channel or private text may be bound for the log."
+  }
+}
+
+run "bot_snapshot_goes_to_the_bots_prefix" {
+  command = plan
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "bots/$::env(EGGDROP_INSTANCE_ID).json") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "$now - $eggdrop_snapshot_at < 900") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "> /dev/null 2> /dev/null &")
+    error_message = "The snapshot goes to bots/<instance-id>.json, when it changes and every 900 s, in the background."
+  }
+
+  assert {
+    condition     = strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "Environment=EGGDROP_BUCKET=$BUCKET")
+    error_message = "The bot must learn the bucket name at boot."
+  }
+
+  assert {
+    condition = anytrue([
+      for statement in data.aws_iam_policy_document.instance.statement :
+      statement.sid == "WriteBotSnapshot" && one(statement.actions) == "s3:PutObject" && one(statement.resources) == "${aws_s3_bucket.this.arn}/bots/*"
+    ])
+    error_message = "A bot may write only under bots/."
+  }
+
+  assert {
+    condition = anytrue([
+      for statement in data.aws_iam_policy_document.instance.statement :
+      statement.sid == "WriteServerEvents" && toset(statement.actions) == toset(["logs:CreateLogStream", "logs:PutLogEvents"]) && one(statement.resources) == "${aws_cloudwatch_log_group.irc.arn}:*"
+    ])
+    error_message = "A bot may create a stream and put events in its log group only."
   }
 }
 

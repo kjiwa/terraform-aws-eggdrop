@@ -10,10 +10,54 @@ resource "aws_ssm_parameter" "status_key" {
 locals {
   auth_header = "X-Eggdrop-Token"
 
+  # The bots' own spelling of a server in serveraddress: the host, then the
+  # port with a + for TLS.
+  irc_server_addresses = [for server in var.irc_servers : "${server.host}:+${server.port}"]
+
+  bot_bucket_arn    = "arn:aws:s3:::${var.bot_bucket}"
+  irc_log_group_arn = "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.default.account_id}:log-group:${var.irc_log_group}"
+
   # Built from known parts, not aws_ssm_parameter.status_key.arn: the core
   # module counts on whether this policy is set, and a count cannot depend on
   # an attribute that is unknown until apply.
   status_key_arn = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.default.account_id}:parameter${aws_ssm_parameter.status_key.name}"
+
+  plugin_policy = {
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ReadStatusKey"
+        Effect   = "Allow"
+        Action   = "ssm:GetParameter"
+        Resource = local.status_key_arn
+      },
+      {
+        Sid      = "ReadBotSnapshots"
+        Effect   = "Allow"
+        Action   = "s3:GetObject"
+        Resource = "${local.bot_bucket_arn}/bots/*"
+      },
+      # Without it a missing snapshot answers 403 instead of 404.
+      {
+        Sid      = "ListBotBucket"
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = local.bot_bucket_arn
+      },
+      {
+        Sid      = "ListBots"
+        Effect   = "Allow"
+        Action   = "autoscaling:DescribeAutoScalingGroups"
+        Resource = "*"
+      },
+      {
+        Sid      = "ReadServerEvents"
+        Effect   = "Allow"
+        Action   = "logs:FilterLogEvents"
+        Resource = "${local.irc_log_group_arn}:*"
+      },
+    ]
+  }
 }
 
 module "core" {
@@ -34,17 +78,14 @@ module "core" {
   # A new account's concurrency quota can be too low to reserve any.
   reserved_concurrency = -1
 
-  plugin_dir         = "${path.module}/plugin"
-  plugin_environment = { STATUS_KEY_PARAMETER = aws_ssm_parameter.status_key.name }
-  plugin_policy_json = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid      = "ReadStatusKey"
-      Effect   = "Allow"
-      Action   = "ssm:GetParameter"
-      Resource = local.status_key_arn
-    }]
-  })
+  plugin_dir = "${path.module}/plugin"
+  plugin_environment = {
+    STATUS_KEY_PARAMETER = aws_ssm_parameter.status_key.name
+    BOT_BUCKET           = var.bot_bucket
+    IRC_LOG_GROUP        = var.irc_log_group
+    IRC_SERVERS          = jsonencode(local.irc_server_addresses)
+  }
+  plugin_policy_json = jsonencode(local.plugin_policy)
 
   config_js = templatefile("${path.module}/config.js.tpl", {
     auth_header = local.auth_header

@@ -85,7 +85,3 @@ def test_key_is_read_from_ssm_once():
         assert plugin.load_key() == b"ssm-value"
     client.get_parameter.assert_called_once()
     assert client.get_parameter.call_args.kwargs["WithDecryption"] is True
-
-
-def test_sections_adds_no_panels():
-    assert plugin.sections() == {}
