@@ -23,6 +23,11 @@ _key = None
 SNAPSHOT_STALE_SECONDS = 1200
 EVENT_WINDOW_SECONDS = 24 * 3600
 FAILURE_EVENTS = ("failed", "refused")
+EVENT_KINDS = ("accepted", *FAILURE_EVENTS)
+EVENT_PATTERN = " ".join(f"?{kind}" for kind in EVENT_KINDS)
+EVENT_MAX_PAGES = 5
+EVENT_MAX_EVENTS = 2000
+BOT_STATES = ("InService", "Pending:Wait", "Pending:Proceed")
 
 
 def load_key():
@@ -96,6 +101,14 @@ def bot_row(instance_id, snapshot, now):
     }
 
 
+def instance_row(s3, instance_id, now):
+    try:
+        snapshot = read_snapshot(s3, os.environ["BOT_BUCKET"], instance_id)
+    except botocore.exceptions.ClientError:
+        return {"label": instance_id, "value": "snapshot unreadable"}
+    return bot_row(instance_id, snapshot, now)
+
+
 def bots(now=None):
     now = time.time() if now is None else now
     asg = boto3.client("autoscaling").describe_auto_scaling_groups(
@@ -103,27 +116,38 @@ def bots(now=None):
     )["AutoScalingGroups"]
     s3 = boto3.client("s3")
     rows = [
-        bot_row(
-            instance["InstanceId"],
-            read_snapshot(s3, os.environ["BOT_BUCKET"], instance["InstanceId"]),
-            now,
-        )
+        instance_row(s3, instance["InstanceId"], now)
         for group in asg
         for instance in group["Instances"]
+        if instance["LifecycleState"] in BOT_STATES
     ]
     return {"title": "Bots", "rows": rows}
 
 
 def read_events(logs, start_ms):
-    pages = logs.get_paginator("filter_log_events").paginate(
-        logGroupName=os.environ["IRC_LOG_GROUP"], startTime=start_ms
-    )
-    for page in pages:
-        for event in page["events"]:
-            yield event["timestamp"] / 1000, event["message"]
+    """Event kinds only, at most EVENT_MAX_PAGES pages and EVENT_MAX_EVENTS
+    events; the flag says whether more remained."""
+    events = []
+    token = None
+    for _ in range(EVENT_MAX_PAGES):
+        arguments = {
+            "logGroupName": os.environ["IRC_LOG_GROUP"],
+            "startTime": start_ms,
+            "filterPattern": EVENT_PATTERN,
+        }
+        if token:
+            arguments["nextToken"] = token
+        page = logs.filter_log_events(**arguments)
+        events.extend((e["timestamp"] / 1000, e["message"]) for e in page["events"])
+        token = page.get("nextToken")
+        if not token:
+            return events, False
+        if len(events) >= EVENT_MAX_EVENTS:
+            break
+    return events[:EVENT_MAX_EVENTS], True
 
 
-def server_row(address, events):
+def server_row(address, events, truncated):
     accepted = failure = None
     for seconds, message in events:
         kind, _, rest = message.partition(" ")
@@ -134,26 +158,31 @@ def server_row(address, events):
             accepted = seconds
         elif kind in FAILURE_EVENTS:
             failure = (seconds, kind, text)
+    captions = []
+    if failure:
+        seconds, kind, text = failure
+        captions.append(f"last {kind} {clock(seconds)}: {text}")
+    if truncated:
+        captions.append("truncated")
     row = {
         "label": address,
         "value": f"accepted {clock(accepted)}" if accepted else "no accept in 24 h",
     }
-    if failure:
-        seconds, kind, text = failure
-        row["caption"] = f"last {kind} {clock(seconds)}: {text}"
+    if captions:
+        row["caption"] = "; ".join(captions)
     return row
 
 
 def servers(now=None):
     now = time.time() if now is None else now
-    events = list(
-        read_events(boto3.client("logs"), int((now - EVENT_WINDOW_SECONDS) * 1000))
+    events, truncated = read_events(
+        boto3.client("logs"), int((now - EVENT_WINDOW_SECONDS) * 1000)
     )
     events.sort(key=lambda event: event[0])
     addresses = json.loads(os.environ["IRC_SERVERS"])
     return {
         "title": "Servers",
-        "rows": [server_row(address, events) for address in addresses],
+        "rows": [server_row(address, events, truncated) for address in addresses],
     }
 
 

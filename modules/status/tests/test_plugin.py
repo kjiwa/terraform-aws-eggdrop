@@ -85,3 +85,7 @@ def test_key_is_read_from_ssm_once():
         assert plugin.load_key() == b"ssm-value"
     client.get_parameter.assert_called_once()
     assert client.get_parameter.call_args.kwargs["WithDecryption"] is True
+
+
+def test_sections_name_the_bots_and_servers_panels():
+    assert set(plugin.sections()) == {"bots", "servers"}

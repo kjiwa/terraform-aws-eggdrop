@@ -1,4 +1,8 @@
 locals {
+  # Minimum over a minute is the smallest value any bot reports; two jump
+  # gates outlast one failed-over bot returning to its slot server.
+  on_slot_alarm_minutes = 2 * var.slot_gate_seconds / 60
+
   # Named here, not read from the alarm, which needs the topic this feeds.
   group_size_alarm_name = "eggdrop-group-size"
   on_slot_alarm_name    = "eggdrop-on-slot-server"
@@ -58,19 +62,18 @@ resource "aws_cloudwatch_metric_alarm" "group_size" {
   ok_actions          = [module.availability.sns_topic_arn]
 }
 
-# Minimum over a minute is the smallest value any bot reports; 60 periods
-# outlast two jump gates (1800 s). Silence is not a breach: SiteUp covers it.
+# Silence is not a breach: SiteUp covers it.
 resource "aws_cloudwatch_metric_alarm" "on_slot_server" {
   count = var.active ? 1 : 0
 
   alarm_name          = local.on_slot_alarm_name
-  alarm_description   = "A bot has been off its slot server for 60 minutes: its slot server refuses it, or it cannot return."
+  alarm_description   = "A bot has been off its slot server for ${local.on_slot_alarm_minutes} minutes: its slot server refuses it, or it cannot return."
   namespace           = var.metric_namespace
   metric_name         = "OnSlotServer"
   statistic           = "Minimum"
   period              = 60
-  evaluation_periods  = 60
-  datapoints_to_alarm = 60
+  evaluation_periods  = local.on_slot_alarm_minutes
+  datapoints_to_alarm = local.on_slot_alarm_minutes
   comparison_operator = "LessThanThreshold"
   threshold           = 1
   treat_missing_data  = "notBreaching"

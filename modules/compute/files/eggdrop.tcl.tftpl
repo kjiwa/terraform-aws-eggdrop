@@ -140,19 +140,23 @@ proc eggdrop_heartbeat {minute hour day month year} {
 }
 bind time - "* * * * *" eggdrop_heartbeat
 
-proc eggdrop_channel_json {channel} {
+proc eggdrop_channel_json {channel with_members} {
   set joined [botonchan $channel]
   set opped [expr {$joined && [botisop $channel]}]
-  set members [expr {$joined ? [llength [chanlist $channel]] : 0}]
-  return "\{\"name\":[eggdrop_json_string $channel],\"joined\":[expr {$joined ? "true" : "false"}],\"opped\":[expr {$opped ? "true" : "false"}],\"members\":$members\}"
+  set json "\{\"name\":[eggdrop_json_string $channel],\"joined\":[expr {$joined ? "true" : "false"}],\"opped\":[expr {$opped ? "true" : "false"}]"
+  if {$with_members} {
+    append json ",\"members\":[expr {$joined ? [llength [chanlist $channel]] : 0}]"
+  }
+  return "$json\}"
 }
 
-# What the status page shows of this bot. "updated" is left out here so that
-# an unchanged bot compares equal.
-proc eggdrop_snapshot_body {} {
+# What the status page shows of this bot. "updated" is left out so that an
+# unchanged bot compares equal; member counts are left out of the compared
+# form because they churn on a busy channel.
+proc eggdrop_snapshot_body {with_members} {
   set channels {}
   foreach channel [lsort [channels]] {
-    lappend channels [eggdrop_channel_json $channel]
+    lappend channels [eggdrop_channel_json $channel $with_members]
   }
   set online [set ::server-online]
   return "\"nick\":[eggdrop_json_string $::botnick],\"botname\":[eggdrop_json_string $::botname],\"server_entry\":[eggdrop_json_string $::serveraddress],\"server_name\":[eggdrop_json_string $::server],\"online_since\":$online,\"on_slot\":[expr {[eggdrop_on_slot_server] ? "true" : "false"}],\"channels\":\[[join $channels ,]\]"
@@ -163,22 +167,27 @@ if {![info exists eggdrop_snapshot_last]} {
   set eggdrop_snapshot_at 0
 }
 
-# Written to bots/<instance-id>.json when it changes and at least every 900 s.
-# Unlike the heartbeat it also runs while disconnected.
+# Written to bots/<instance-id>.json when its stable fields change and at least
+# every 900 s, with member counts. Unlike the heartbeat it also runs while
+# disconnected. A bot that never learned its instance id writes nothing.
 proc eggdrop_snapshot {minute hour day month year} {
   global eggdrop_snapshot_last eggdrop_snapshot_at
-  set body [eggdrop_snapshot_body]
-  set now [unixtime]
-  if {$body eq $eggdrop_snapshot_last && $now - $eggdrop_snapshot_at < 900} {
+  set instance_id [eggdrop_instance_id]
+  if {$instance_id eq ""} {
     return
   }
-  set json "\{$body,\"updated\":$now\}"
+  set stable [eggdrop_snapshot_body 0]
+  set now [unixtime]
+  if {$stable eq $eggdrop_snapshot_last && $now - $eggdrop_snapshot_at < 900} {
+    return
+  }
+  set json "\{[eggdrop_snapshot_body 1],\"updated\":$now\}"
   if {![catch {
-    exec aws s3 cp - s3://$::env(EGGDROP_BUCKET)/bots/$::env(EGGDROP_INSTANCE_ID).json \
+    exec aws s3 cp - s3://$::env(EGGDROP_BUCKET)/bots/$instance_id.json \
       --content-type application/json --only-show-errors << $json \
       > /dev/null 2> /dev/null &
   }]} {
-    set eggdrop_snapshot_last $body
+    set eggdrop_snapshot_last $stable
     set eggdrop_snapshot_at $now
   }
 }

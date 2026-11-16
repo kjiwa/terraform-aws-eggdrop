@@ -493,7 +493,7 @@ run "server_events_go_to_the_log_group" {
   }
 
   assert {
-    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set eggdrop_log_group \"/eggdrop/irc\"") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "--log-stream-name $::env(EGGDROP_INSTANCE_ID)") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "> /dev/null 2> /dev/null &")
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set eggdrop_log_group \"/eggdrop/irc\"") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "--log-stream-name $instance_id") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "> /dev/null 2> /dev/null &")
     error_message = "Each event goes to the instance's stream, in the background."
   }
 
@@ -508,11 +508,60 @@ run "server_events_go_to_the_log_group" {
   }
 }
 
+run "snapshot_compares_stable_fields_and_sends_the_full_body" {
+  command = plan
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "set stable [eggdrop_snapshot_body 0]") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "$stable eq $eggdrop_snapshot_last") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "set eggdrop_snapshot_last $stable")
+    error_message = "The change check must compare the form without member counts."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "set json \"\\{[eggdrop_snapshot_body 1],") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "if {$with_members} {")
+    error_message = "The body sent must carry member counts, and only the full form may."
+  }
+}
+
+run "boot_survives_a_missing_instance_id" {
+  command = plan
+
+  assert {
+    condition     = strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "INSTANCE_ID=\"$(retry fetch_instance_id)\" || INSTANCE_ID=\"\"") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "if [ -z \"$INSTANCE_ID\" ]; then")
+    error_message = "An IMDS failure must leave the instance id empty and skip the log stream, not abort boot."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "proc eggdrop_instance_id") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "if {$instance_id eq \"\"} {") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "if {$instance_id eq \"\"} {")
+    error_message = "The server event log and the snapshot must skip when the instance id is empty."
+  }
+}
+
+run "targetless_server_events_carry_a_placeholder" {
+  command = plan
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "if {$target eq \"\"} {\n    set target -\n  }")
+    error_message = "An event without a target must log \"-\" so the line keeps its fields."
+  }
+}
+
+run "slot_gate_is_rendered_and_exported" {
+  command = plan
+  variables {
+    irc_servers = [{ host = "a.example.net", port = 6697 }, { host = "b.example.net", port = 7000 }]
+  }
+
+  assert {
+    condition     = output.slot_gate_seconds == 1800 && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "$eggdrop_moved_at < ${output.slot_gate_seconds}")
+    error_message = "The jump gate rendered into the conf must be the value the alarm window derives from."
+  }
+}
+
 run "bot_snapshot_goes_to_the_bots_prefix" {
   command = plan
 
   assert {
-    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "bots/$::env(EGGDROP_INSTANCE_ID).json") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "$now - $eggdrop_snapshot_at < 900") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "> /dev/null 2> /dev/null &")
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "bots/$instance_id.json") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "$now - $eggdrop_snapshot_at < 900") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "> /dev/null 2> /dev/null &")
     error_message = "The snapshot goes to bots/<instance-id>.json, when it changes and every 900 s, in the background."
   }
 

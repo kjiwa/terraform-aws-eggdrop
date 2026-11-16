@@ -34,12 +34,13 @@ module "compute" {
 module "monitoring" {
   source = "./modules/monitoring"
 
-  domain_name      = var.domain_name
-  asg_name         = module.compute.asg_name
-  alert_email      = var.alert_email
-  metric_namespace = local.metric_namespace
-  group_size       = min(var.bots, length(var.nicks))
-  active           = var.active
+  domain_name       = var.domain_name
+  asg_name          = module.compute.asg_name
+  alert_email       = var.alert_email
+  metric_namespace  = local.metric_namespace
+  group_size        = min(var.bots, length(var.nicks))
+  slot_gate_seconds = module.compute.slot_gate_seconds
+  active            = var.active
 }
 
 module "status" {

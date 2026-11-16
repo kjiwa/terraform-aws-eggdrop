@@ -118,8 +118,13 @@ fetch_config() {
 }
 
 # The bot writes its server events to a stream named after the instance, and
-# its status snapshot to an object named after it.
+# its status snapshot to an object named after it. Without the id the bot
+# still runs and writes neither.
 create_log_stream() {
+  if [ -z "$INSTANCE_ID" ]; then
+    log "No instance id; the bot runs without server events or snapshots"
+    return 0
+  fi
   log "Creating log stream $INSTANCE_ID..."
   retry aws logs create-log-stream --log-group-name "$LOG_GROUP" --log-stream-name "$INSTANCE_ID" ||
     log "log stream failed; the bot runs without server events"
@@ -203,7 +208,7 @@ UNIT
 
 main() {
   log "Config $CONFIG_HASH"
-  INSTANCE_ID="$(retry fetch_instance_id)"
+  INSTANCE_ID="$(retry fetch_instance_id)" || INSTANCE_ID=""
   enable_swap
   enable_security_updates
   install_build_tools

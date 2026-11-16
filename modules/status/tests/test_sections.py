@@ -53,7 +53,7 @@ def object_response(body):
     return {"Body": io.BytesIO(json.dumps(body).encode())}
 
 
-def stub_group(autoscaling, instance_ids):
+def stub_group(autoscaling, instance_ids, states=None):
     autoscaling.add_response(
         "describe_auto_scaling_groups",
         {
@@ -71,7 +71,9 @@ def stub_group(autoscaling, instance_ids):
                         {
                             "InstanceId": instance_id,
                             "AvailabilityZone": "us-west-2a",
-                            "LifecycleState": "InService",
+                            "LifecycleState": (states or {}).get(
+                                instance_id, "InService"
+                            ),
                             "HealthStatus": "Healthy",
                             "ProtectedFromScaleIn": False,
                         }
@@ -84,10 +86,10 @@ def stub_group(autoscaling, instance_ids):
     )
 
 
-def run_bots(instance_ids, objects):
+def run_bots(instance_ids, objects, states=None):
     autoscaling, autoscaling_stub = stubbed("autoscaling")
     s3, s3_stub = stubbed("s3")
-    stub_group(autoscaling_stub, instance_ids)
+    stub_group(autoscaling_stub, instance_ids, states)
     for instance_id, body in objects.items():
         key = f"bots/{instance_id}.json"
         if body is None:
@@ -104,10 +106,6 @@ def run_bots(instance_ids, objects):
             )
     with autoscaling_stub, s3_stub, patch_clients(autoscaling=autoscaling, s3=s3):
         return plugin.bots(NOW)
-
-
-def test_sections_name_both_collectors():
-    assert set(plugin.sections()) == {"bots", "servers"}
 
 
 def test_two_bots_show_server_ident_and_channels():
@@ -151,35 +149,67 @@ def test_disconnected_bot_reads_disconnected():
     assert facts["rows"][0]["value"] == "disconnected"
 
 
-def test_other_s3_errors_propagate():
+def test_unreadable_snapshot_leaves_the_other_rows():
     autoscaling, autoscaling_stub = stubbed("autoscaling")
     s3, s3_stub = stubbed("s3")
-    stub_group(autoscaling_stub, ["i-1"])
+    stub_group(autoscaling_stub, ["i-1", "i-2"])
     s3_stub.add_client_error("get_object", service_error_code="AccessDenied")
-    clients = patch_clients(autoscaling=autoscaling, s3=s3)
-    with (
-        autoscaling_stub,
-        s3_stub,
-        clients,
-        pytest.raises(Exception, match="AccessDenied"),
-    ):
-        plugin.bots(NOW)
+    s3_stub.add_response("get_object", object_response(snapshot(nick="zera")))
+    with autoscaling_stub, s3_stub, patch_clients(autoscaling=autoscaling, s3=s3):
+        facts = plugin.bots(NOW)
+    assert facts["rows"][0] == {"label": "i-1", "value": "snapshot unreadable"}
+    assert facts["rows"][1]["label"] == "zera"
+
+
+@pytest.mark.parametrize(
+    "state", ["Terminating", "Terminating:Wait", "Terminating:Proceed"]
+)
+def test_terminating_instances_get_no_row(state):
+    facts = run_bots(["i-1", "i-2"], {"i-1": snapshot()}, states={"i-2": state})
+    assert [row["label"] for row in facts["rows"]] == ["naju"]
+
+
+@pytest.mark.parametrize("state", ["InService", "Pending:Wait", "Pending:Proceed"])
+def test_launching_and_serving_instances_get_a_row(state):
+    facts = run_bots(["i-1"], {"i-1": snapshot()}, states={"i-1": state})
+    assert [row["label"] for row in facts["rows"]] == ["naju"]
+
+
+def log_page(messages, token=None):
+    page = {
+        "events": [
+            {"timestamp": int(seconds * 1000), "message": message}
+            for seconds, message in messages
+        ]
+    }
+    if token:
+        page["nextToken"] = token
+    return page
+
+
+def log_params(token=None):
+    params = {
+        "logGroupName": GROUP,
+        "startTime": (NOW - 24 * 3600) * 1000,
+        "filterPattern": "?accepted ?failed ?refused",
+    }
+    if token:
+        params["nextToken"] = token
+    return params
+
+
+def run_pages(pages):
+    logs, logs_stub = stubbed("logs")
+    token = None
+    for page in pages:
+        logs_stub.add_response("filter_log_events", page, log_params(token))
+        token = page.get("nextToken")
+    with logs_stub, patch_clients(logs=logs):
+        return plugin.servers(NOW)
 
 
 def run_servers(messages):
-    logs, logs_stub = stubbed("logs")
-    logs_stub.add_response(
-        "filter_log_events",
-        {
-            "events": [
-                {"timestamp": int(seconds * 1000), "message": message}
-                for seconds, message in messages
-            ]
-        },
-        {"logGroupName": GROUP, "startTime": (NOW - 24 * 3600) * 1000},
-    )
-    with logs_stub, patch_clients(logs=logs):
-        return plugin.servers(NOW)
+    return run_pages([log_page(messages)])
 
 
 def test_refusal_row_carries_the_reason_and_the_last_accept():
@@ -209,3 +239,38 @@ def test_server_with_no_events_has_a_bare_row():
         "label": "a.example.net:+6697",
         "value": "no accept in 24 h",
     }
+
+
+def test_targetless_events_belong_to_no_row():
+    facts = run_servers(
+        [
+            (NOW - 100, "failed - something went wrong"),
+            (NOW - 90, "accepted - a.example.net:+6697"),
+        ]
+    )
+    assert all(row["value"] == "no accept in 24 h" for row in facts["rows"])
+    assert all("caption" not in row for row in facts["rows"])
+
+
+def test_reading_stops_after_five_pages_and_says_so():
+    pages = [log_page([], token=f"t{n}") for n in range(5)]
+    facts = run_pages(pages)
+    assert all(row["caption"] == "truncated" for row in facts["rows"])
+
+
+def test_reading_stops_at_two_thousand_events_and_says_so():
+    many = [(NOW - 1000 + n / 10, "accepted x:+1 y") for n in range(2500)]
+    facts = run_pages([log_page(many, token="t1")])
+    assert all(row["caption"] == "truncated" for row in facts["rows"])
+
+
+def test_a_short_history_is_not_truncated():
+    facts = run_pages([log_page([], token="t1"), log_page([])])
+    assert all("caption" not in row for row in facts["rows"])
+
+
+def test_truncation_follows_the_failure_caption():
+    pages = [log_page([(NOW - 60, "failed a.example.net:+6697 down")], token="t0")]
+    pages += [log_page([], token=f"t{n}") for n in range(1, 5)]
+    facts = run_pages(pages)
+    assert facts["rows"][0]["caption"].endswith("down; truncated")

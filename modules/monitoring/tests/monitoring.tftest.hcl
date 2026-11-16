@@ -13,12 +13,13 @@ mock_provider "aws" {
 mock_provider "archive" {}
 
 variables {
-  domain_name      = "example.com"
-  asg_name         = "eggdrop"
-  alert_email      = "ops@example.com"
-  metric_namespace = "Eggdrop"
-  group_size       = 2
-  active           = true
+  domain_name       = "example.com"
+  asg_name          = "eggdrop"
+  alert_email       = "ops@example.com"
+  metric_namespace  = "Eggdrop"
+  group_size        = 2
+  slot_gate_seconds = 1800
+  active            = true
 }
 
 # The absence of the canary rule is asserted where the resource lives: the
@@ -93,5 +94,17 @@ run "on_slot_alarm_is_off_while_inactive" {
   assert {
     condition     = length(aws_cloudwatch_metric_alarm.on_slot_server) == 0
     error_message = "No alarm while the group is scaled to zero."
+  }
+}
+
+run "on_slot_alarm_window_is_two_gates" {
+  command = plan
+  variables {
+    slot_gate_seconds = 900
+  }
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.on_slot_server[0].evaluation_periods == 30 && aws_cloudwatch_metric_alarm.on_slot_server[0].datapoints_to_alarm == 30
+    error_message = "The alarm must need two jump gates of one-minute breaches."
   }
 }

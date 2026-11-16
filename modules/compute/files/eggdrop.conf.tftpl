@@ -75,17 +75,32 @@ proc eggdrop_json_string {text} {
   return "\"$out\""
 }
 
-# One CloudWatch Logs line per server event: "event host:port text". The
-# trailing & keeps the call from blocking PING replies. The stream is named
-# after the instance and created at boot.
+# Empty when boot could not read the instance metadata.
+proc eggdrop_instance_id {} {
+  if {[info exists ::env(EGGDROP_INSTANCE_ID)]} {
+    return $::env(EGGDROP_INSTANCE_ID)
+  }
+  return ""
+}
+
+# One CloudWatch Logs line per server event: "event host:port text", with "-"
+# for an event that has no target. The trailing & keeps the call from blocking
+# PING replies. The stream is named after the instance and created at boot.
 proc eggdrop_server_event {event target text} {
   global eggdrop_region eggdrop_log_group
+  set instance_id [eggdrop_instance_id]
+  if {$instance_id eq ""} {
+    return
+  }
+  if {$target eq ""} {
+    set target -
+  }
   set message [string trim "$event $target $text"]
   set events "\[{\"timestamp\":[clock milliseconds],\"message\":[eggdrop_json_string $message]}\]"
   catch {
     exec aws logs put-log-events --region $eggdrop_region \
       --log-group-name $eggdrop_log_group \
-      --log-stream-name $::env(EGGDROP_INSTANCE_ID) \
+      --log-stream-name $instance_id \
       --log-events $events > /dev/null 2> /dev/null &
   }
 }
@@ -118,7 +133,8 @@ bind log - {* Failed connect to *} eggdrop_log_failed
 bind log - {* Timeout: connect *} eggdrop_log_failed
 
 # A server that drops the bot before its welcome logs only this line; once
-# online, disconnect-server reports it.
+# online, disconnect-server reports it. Both fire before server-online is
+# reset, so the check below logs each disconnect once.
 proc eggdrop_log_dropped {level channel text} {
   if {[set ::server-online] > 0} {
     return
@@ -208,7 +224,7 @@ proc eggdrop_on_slot_server {} {
 
 %{ if length(irc_servers) > 1 ~}
 # A bot jumps only on minutes whose number mod the bot count is its slot, so
-# two bots never jump together, at most once per 1800 s, and only while another
+# two bots never jump together, at most once per ${slot_gate_seconds} s, and only while another
 # listed bot is opped in every channel, with at least one channel: moving never
 # drops the last op. A bot that failed over returns to its slot server once it
 # has waited out the gate.
@@ -225,7 +241,7 @@ proc eggdrop_take_server {minute hour day month year} {
   if {[scan $minute %d] % [llength $eggdrop_nicks] != [eggdrop_slot]} {
     return
   }
-  if {[unixtime] - $eggdrop_moved_at < 1800 || [llength [channels]] == 0} {
+  if {[unixtime] - $eggdrop_moved_at < ${slot_gate_seconds} || [llength [channels]] == 0} {
     return
   }
   if {[eggdrop_on_slot_server]} {
