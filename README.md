@@ -113,7 +113,7 @@ Deaf describes the bots, not the channel. Every channel member, every server ope
 
 ## Cost
 
-About 3 USD a month for two bots at Spot prices in us-west-2: each instance (about 0.0008 USD an hour at the last check, and at most 0.0024 for a `t4g.micro`) with an 8 GB root volume, plus metrics, alarms and logs (the snapshots add about 6,000 S3 PUTs a month, a few cents; log ingestion is negligible). The second bot's volume and metrics are estimated, not measured; one bot costs about 1.2 USD less. CloudFront and Lambda stay inside the free tier. A Route 53 zone is yours to add.
+About 3 USD a month for two bots at Spot prices in us-west-2: each instance (about 0.0008 USD an hour at the last check, and at most 0.0024 for a `t4g.micro`) with an 8 GB root volume, plus metrics, alarms and logs (the snapshots add about 6,000 S3 PUTs a month, a few cents; log ingestion is negligible). The second bot's volume and metrics are estimated, not measured; one bot costs about 1.2 USD less. CloudFront and Lambda stay inside the free tier. A Route 53 zone is yours to add: 0.50 USD a month at list price, plus 1 USD for a customer-managed DNSSEC key.
 
 ## Verification
 

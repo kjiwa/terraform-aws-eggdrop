@@ -17,3 +17,8 @@ output "status_url" {
   description = "Public HTTPS URL of the status page."
   value       = module.edge.url
 }
+
+output "irc_log_group_name" {
+  description = "Log group the bots write server events to."
+  value       = module.compute.irc_log_group_name
+}

@@ -82,7 +82,7 @@ variable "irc_servers" {
 }
 
 variable "channels" {
-  description = "Channels the bot joins, keyed by name. ops lists the handles in users that the bot ops on join in that channel. SiteUp is 1 only while the bot has ops in every one."
+  description = "Channels the bot joins, keyed by name. ops lists the handles in users that the bot ops on join in that channel. SiteUp is 1 while the bot is connected, ops or not."
   type = map(object({
     ops = list(string)
   }))

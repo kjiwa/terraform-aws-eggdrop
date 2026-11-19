@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Root output `irc_log_group_name`.
+
+### Fixed
+
+- The `channels` description says `SiteUp` follows the connection, not ops.
+
 ## v0.9.0
 
 ### Added
