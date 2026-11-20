@@ -9,9 +9,25 @@ loadmodule irc
 
 set eggdrop_nicks {%{ for nick in nicks } ${nick}%{ endfor } }
 
+# eggdrop-slot writes slot.tcl (README, "Slot assignment"). Only a plain index is read.
+set eggdrop_boot_slot -1
+set eggdrop_boot_server -1
+if {![catch {open slot.tcl} eggdrop_slot_file]} {
+  set eggdrop_slot_text [read $eggdrop_slot_file]
+  close $eggdrop_slot_file
+  foreach eggdrop_slot_kind {slot server} {
+    if {[regexp -line "^set eggdrop_boot_$eggdrop_slot_kind (\[0-9\]+)\$" $eggdrop_slot_text -> eggdrop_slot_index] && [scan $eggdrop_slot_index %d eggdrop_slot_index] == 1 && $eggdrop_slot_index < [llength $eggdrop_nicks]} {
+      set eggdrop_boot_$eggdrop_slot_kind $eggdrop_slot_index
+    }
+  }
+}
+unset -nocomplain eggdrop_slot_file eggdrop_slot_text eggdrop_slot_kind eggdrop_slot_index
+
 # A rehash re-reads this file, so a bot that has claimed a listed name keeps it.
 if {[info exists botnick] && [lsearch -exact -nocase $eggdrop_nicks $botnick] >= 0} {
   set nick $botnick
+} elseif {$eggdrop_boot_slot >= 0} {
+  set nick [lindex $eggdrop_nicks $eggdrop_boot_slot]
 } else {
   set nick "${nicks[0]}"
 }
@@ -26,11 +42,14 @@ set prefer-ipv6 1
 
 # Eggdrop's default is 60 s. A dead entry costs 20 s of failover time, not 60.
 set server-timeout 20
-%{ for server in irc_servers ~}
-server add ${server.host} +${server.port}
-%{ endfor ~}
-
 set eggdrop_servers {%{ for server in irc_servers } {${server.host} +${server.port}}%{ endfor } }
+
+# The slot server first, the rest in listed order as failover.
+set eggdrop_first_server [expr {max($eggdrop_boot_slot, $eggdrop_boot_server, 0) % [llength $eggdrop_servers]}]
+foreach eggdrop_server [concat [lrange $eggdrop_servers $eggdrop_first_server end] [lrange $eggdrop_servers 0 [expr {$eggdrop_first_server - 1}]]] {
+  server add [lindex $eggdrop_server 0] [lindex $eggdrop_server 1]
+}
+unset eggdrop_first_server eggdrop_server
 
 set eggdrop_log_group "${log_group}"
 
@@ -186,14 +205,28 @@ proc eggdrop_current_target {} {
   return $eggdrop_attempt
 }
 
+# The bot's own server log is level s on channel *. Channel text is level p,
+# private text m (a notice to the bot carries both), and a server NOTICE starts
+# with "-NOTICE-", so text from the network cannot forge a server event. The
+# bind masks only narrow what these procs see.
+proc eggdrop_server_log {level channel text prefix} {
+  return [expr {$level eq "s" && $channel eq "*" && [string first $prefix $text] == 0}]
+}
+
 proc eggdrop_log_trying {level channel text} {
   global eggdrop_attempt
+  if {![eggdrop_server_log $level $channel $text "Trying server "]} {
+    return
+  }
   set eggdrop_attempt [lindex $text 2]
   eggdrop_server_event trying $eggdrop_attempt ""
 }
 bind log - {* Trying server *} eggdrop_log_trying
 
 proc eggdrop_log_failed {level channel text} {
+  if {![eggdrop_server_log $level $channel $text "Failed connect to "] && ![eggdrop_server_log $level $channel $text "Timeout: connect "]} {
+    return
+  }
   eggdrop_server_event failed [eggdrop_current_target] $text
 }
 bind log - {* Failed connect to *} eggdrop_log_failed
@@ -203,7 +236,7 @@ bind log - {* Timeout: connect *} eggdrop_log_failed
 # online, disconnect-server reports it. Both fire before server-online is
 # reset, so the check below logs each disconnect once.
 proc eggdrop_log_dropped {level channel text} {
-  if {[set ::server-online] > 0} {
+  if {![eggdrop_server_log $level $channel $text "Disconnected from "] || [set ::server-online] > 0} {
     return
   }
   eggdrop_server_event disconnected [eggdrop_current_target] $text
@@ -236,8 +269,8 @@ bind raw - ERROR* eggdrop_raw_refused
 bind raw - 463 eggdrop_raw_refused
 bind raw - 465 eggdrop_raw_refused
 
-# Every bot boots as the first nick. One that holds no listed name claims the
-# first listed name no one in its channels wears; set nick also moves
+# A bot with no slot file boots as the first nick. One that holds no listed
+# name claims the first listed name no one in its channels wears; set nick also moves
 # keep-nick's target to the claimed name. The new ident and realname apply at
 # the next connect.
 proc eggdrop_claim_nick {minute hour day month year} {
@@ -395,15 +428,17 @@ proc eggdrop_probe_servers {minute hour day month year} {
 bind time - "* * * * *" eggdrop_probe_servers
 
 # Releases this instance's launch hook once the bot is in every channel, or
-# 300 s after connecting. The guard keeps a rehash from running it again. A
-# failed call is retried a few times: an instance that is no longer waiting
-# (long-running, or launched before the hook existed) never succeeds.
+# 300 s after connecting. The end of a channel's NAMES list, which follows the
+# bot's own join, and the minute tick both try. The guard keeps a rehash, and
+# the second of the two, from running it again. A failed call is retried a few
+# times: an instance that is no longer waiting (long-running, or launched
+# before the hook existed) never succeeds.
 if {![info exists eggdrop_ready_sent]} {
   set eggdrop_ready_sent 0
   set eggdrop_ready_failures 0
 }
 
-proc eggdrop_release_launch {minute hour day month year} {
+proc eggdrop_try_release {} {
   global eggdrop_ready_sent eggdrop_ready_failures
   if {$eggdrop_ready_sent || $eggdrop_ready_failures >= 5 || ![eggdrop_up]} {
     return
@@ -424,6 +459,16 @@ proc eggdrop_release_launch {minute hour day month year} {
     putlog "eggdrop-ready failed: $err"
   }
 }
+
+proc eggdrop_release_launch {minute hour day month year} {
+  eggdrop_try_release
+}
 bind time - "* * * * *" eggdrop_release_launch
+
+proc eggdrop_release_on_names {from keyword text} {
+  eggdrop_try_release
+  return 0
+}
+bind raw - 366 eggdrop_release_on_names
 
 source scripts/eggdrop.tcl

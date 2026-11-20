@@ -102,6 +102,11 @@ jobs:
         run: tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # scripts/tests/test_conf.sh fails in CI without tclsh.
+      - name: install tclsh
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends tcl
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
       # The terraform_validate hook excludes the root module and modules/edge,
       # which declare configuration_aliases and cannot validate standalone.

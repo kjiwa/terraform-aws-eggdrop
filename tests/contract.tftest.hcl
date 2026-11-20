@@ -352,3 +352,16 @@ run "channel_ops_may_be_omitted" {
     error_message = "A channel with no ops entry must plan: the bot holds the channel and ops nobody."
   }
 }
+
+run "bots_are_at_most_ten" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    bots = 11
+  }
+
+  expect_failures = [var.bots]
+}
