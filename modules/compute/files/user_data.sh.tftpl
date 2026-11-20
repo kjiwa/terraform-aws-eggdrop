@@ -49,12 +49,21 @@ fetch_instance_id() {
   curl -fsS -H "X-aws-ec2-metadata-token: $_imds_token" http://169.254.169.254/latest/meta-data/instance-id
 }
 
-enable_swap() {
-  log "Creating 1G swap for the compile..."
-  fallocate -l 1G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=1024
+make_swap() {
   chmod 600 /swapfile
   mkswap /swapfile
   swapon /swapfile
+}
+
+# fallocate is instant; a filesystem that cannot swap on a preallocated file
+# gets a written one.
+enable_swap() {
+  log "Creating 1G swap for the compile..."
+  if ! { fallocate -l 1G /swapfile && make_swap; }; then
+    rm -f /swapfile
+    dd if=/dev/zero of=/swapfile bs=1M count=1024
+    make_swap
+  fi
 }
 
 enable_security_updates() {
