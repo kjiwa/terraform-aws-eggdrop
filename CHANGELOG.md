@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.11.0
+
+Upgrading: the first plan changes the launch templates, the instance role's policy and the group's refresh warmup, so Terraform starts one make-before-break refresh. The extra bot of that refresh joins as a spare; the second replacement joins its slot server first.
+
+### Added
+
+- Slot-first join: before each start the bot reads its peers and connects as its slot nick to its slot server, instead of booting as the first nick on the first server and moving later (see "Slot assignment" in the README). The instance role gains `autoscaling:DescribeAutoScalingGroups` and `s3:GetObject` on `bots/*`.
+- `bots` must be at most 10.
+- Tests: `scripts/tests/test_slot.sh` and `scripts/tests/test_conf.sh` (tclsh, with Eggdrop's commands stubbed; needs `tclsh` and `terraform`).
+
+### Changed
+
+- The launch hook is released when a channel's NAMES list ends after the bot's join, not on the next minute tick; the 300 s fallback stays. `instance_warmup` is 30 s, down from 60.
+- Boot is shorter: the swap file is preallocated, Eggdrop compiles with `make -j2`, and `dnf-automatic` is installed after the bot starts.
+- Status links last 1 hour, not 12. The token format is unchanged, so the status page verifier accepts it.
+- The eggdrop unit sets `CapabilityBoundingSet=` (none), `RestrictAddressFamilies`, `ProtectKernelTunables`, `ProtectKernelModules` and `ProtectControlGroups`.
+
+### Fixed
+
+- Channel or private text such as `Trying server evil:6697` could forge a server event in `/eggdrop/irc`; the log binds now accept only the bot's own server log lines.
+
 ## v0.10.0
 
 Upgrading with `image_ids` null: the first plan adds `terraform_data.image_pin`, the updater Lambda, its role and policy, log group, schedule rule and target, and two alarms, and changes no launch template, ASG or instance. Unpinned bots keep their current image until their next replacement.

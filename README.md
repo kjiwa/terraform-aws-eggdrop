@@ -11,7 +11,7 @@ Nothing persists. The instance rebuilds its userfile from the module's inputs on
 | Module | Resources |
 | --- | --- |
 | `modules/network` | IPv6-only VPC with a subnet in every availability zone, egress-only internet gateway, S3 gateway endpoint, EC2 Instance Connect Endpoint. No public IPv4 unless `ipv4_enabled`, and no inbound path. |
-| `modules/compute` | Spot Auto Scaling group of `bots` instances across every zone and six burstable types (`t3a`, `t3` and `t4g` nano and micro, x86_64 and arm64), stock Amazon Linux 2023 with unattended security updates and a daily AMI updater, the bot bucket, the rendered Eggdrop config, and a launch hook that holds each new bot in `Pending:Wait` until it is in its channels. |
+| `modules/compute` | Spot Auto Scaling group of `bots` instances across every zone and six burstable types (`t3a`, `t3` and `t4g` nano and micro, x86_64 and arm64), stock Amazon Linux 2023 with unattended security updates (installed once the bot is running) and a daily AMI updater, the bot bucket, the rendered Eggdrop config, and a launch hook that holds each new bot in `Pending:Wait` until it is in its channels. |
 | `modules/monitoring` | The [status page](https://github.com/kjiwa/terraform-aws-status-page) availability and alarm modules, with the canary off. |
 | `modules/status` | The status page core plus a plugin that checks an HMAC token. |
 | `modules/edge` | CloudFront and an ACM certificate at the apex of your domain. `/` redirects to `/status`. |
@@ -78,13 +78,19 @@ The module adds the handle `peers` for the bots' own address ranges (each subnet
    ```
 
 3. Op one bot once from a client that has ops. It ops the other, and from then on the bots op each other. A bot that rejoins a channel with no peer in it is not opped until someone ops it.
-4. Message the bot `status` from a client whose hostmask matches `owner`. It replies with a link that signs you in for 12 hours.
+4. Message the bot `status` from a client whose hostmask matches `owner`. It replies with a link that signs you in for 1 hour.
 
 To upgrade from v0.1.0, apply with `active = false` first, then apply the new version with `active = true`: the subnets are replaced, which cannot happen while an instance is running in the old one.
 
 To roll out a new Eggdrop version, upload the new tarball, then change `eggdrop`. Changes to `channels`, `users` and `owner` do not replace the instance: the bot checks the bucket every minute and, when the roster differs, reloads in place without leaving IRC. A channel removed from `channels` is dropped from the bot's list but not necessarily parted. Any other change to the rendered config, to `nicks`, `irc_servers` or `image_ids`, or a new status key refreshes the instances one at a time: each new bot waits in `Pending:Wait` until it is in its channels, and the old one is retired after. The refresh needs a peer in place to op the new bot, so it keeps ops with two or more bots; `terraform output asg_name` names the group for a manual `aws autoscaling start-instance-refresh`.
 
 The roster script (`config/eggdrop.tcl`) is applied to running bots in place, but the config reaches a bot only when its instance is replaced, so the two must stay compatible for one release: the script stubs every proc and variable it takes from the config (`eggdrop_on_slot_server`, `eggdrop_instance_id`, `eggdrop_json_string`, `eggdrop_probes_json`, `eggdrop_nicks`, `eggdrop_umode`, `eggdrop_deaf`).
+
+### Slot assignment
+
+Before each start the bot runs `eggdrop-slot`, which lists the group's instances (`autoscaling:DescribeAutoScalingGroups`, which IAM cannot scope to a group) and reads each peer's `bots/<instance-id>.json`. A peer holds the slot of the listed nick it wears if its snapshot is at most 20 minutes old; a booting peer with no snapshot, or one on another nick, will take a free slot. The bot ranks the unsettled bots by instance id and takes the free slot of its rank, so two bots that boot together take different slots. It writes `/opt/eggdrop/slot.tcl`, and the config then connects it as `nicks[slot]` to `irc_servers[slot mod length]` first, with the other servers after it as failover. The file lasts until the instance reboots, so a service restart keeps the slot.
+
+Any failure (the group or a snapshot unreadable, no instance id) writes nothing and the bot boots as the first nick on the first server. So does a bot that finds every slot held, as the extra bot of a make-before-break replacement does: it claims the first nick that frees and moves to that nick's server, at most once per 30 minutes. Both stay as the fallback for a bot whose slot server is down or whose nick is held by a stale connection.
 
 ### Updating the image
 
@@ -144,4 +150,6 @@ Unit tests cannot start a bot. Before a release, build Eggdrop on Amazon Linux 2
 - A server split leaves each side with its bots, and the channel merge deops one side when the split heals. The peers op each other afterwards. `GroupSize` is the only signal.
 - A list that mixes networks can land the bots on different networks, each seeing an empty channel and opping itself. `SiteUp` stays 1; only the `GroupSize` alarm notices.
 - Nick collisions after a replacement: the old nick lingers on the server until it times out. The bot takes its alternate nick and reclaims the primary.
+- The first replacement in a refresh starts while both old bots hold their slots, so it boots as a spare and joins the first server; it moves to its slot server after the bot it replaces leaves. The second replacement takes the slot that frees and joins its slot server first.
+- `bots` is at most 10: the nick slots, snapshot reads and refresh headroom are sized for a handful.
 - The status page lists only what the status-page core can see from AWS. The bot reports no host metrics.

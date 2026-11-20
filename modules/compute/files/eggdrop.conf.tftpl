@@ -268,8 +268,8 @@ bind raw - ERROR* eggdrop_raw_refused
 bind raw - 463 eggdrop_raw_refused
 bind raw - 465 eggdrop_raw_refused
 
-# Every bot boots as the first nick. One that holds no listed name claims the
-# first listed name no one in its channels wears; set nick also moves
+# A bot with no slot file boots as the first nick. One that holds no listed
+# name claims the first listed name no one in its channels wears; set nick also moves
 # keep-nick's target to the claimed name. The new ident and realname apply at
 # the next connect.
 proc eggdrop_claim_nick {minute hour day month year} {
