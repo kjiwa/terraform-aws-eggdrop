@@ -172,6 +172,18 @@ run "pinned_image_reaches_both_templates" {
   }
 }
 
+run "pinned_image_reads_no_ssm_parameter" {
+  command = plan
+  variables {
+    image_ids = { arm64 = "ami-0aaaaaaaaaaaaaaaa", x86_64 = "ami-0bbbbbbbbbbbbbbbb" }
+  }
+
+  assert {
+    condition     = length(data.aws_ssm_parameter.al2023) == 0
+    error_message = "A pin must not read the SSM parameters."
+  }
+}
+
 run "changing_the_pin_replaces_the_templates" {
   command = plan
   variables {

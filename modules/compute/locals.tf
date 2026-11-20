@@ -10,7 +10,11 @@ locals {
   # alarm window is derived from it.
   slot_gate_seconds = 1800
 
-  # Terraform-triggered and updater-forced refreshes share these.
+  # Terraform-triggered and updater-forced refreshes share these. Not shared:
+  # skip_matching, which only the Terraform-triggered refresh sets (the updater
+  # refreshes because instances must be replaced, so it skips nothing), and
+  # alarm names, which the updater uses to hold itself back while the site is
+  # down instead of attaching them to the refresh, which the group never did.
   refresh_preferences = {
     min_healthy_percentage = 100
     max_healthy_percentage = 100 + ceil(100 / var.bots)

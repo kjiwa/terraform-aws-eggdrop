@@ -2,7 +2,7 @@
 # module then advances it through new template versions, and image_id is
 # ignored so that Terraform does not revert them.
 data "aws_ssm_parameter" "al2023" {
-  for_each = local.architectures
+  for_each = var.image_ids == null ? local.architectures : toset([])
 
   name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-${each.key}"
 }

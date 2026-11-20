@@ -1,6 +1,8 @@
 # Changelog
 
-## v0.10.0
+## Unreleased
+
+Upgrading with `image_ids` null: the first plan adds `terraform_data.image_pin`, the updater Lambda, its role and policy, log group, schedule rule and target, and two alarms, and changes no launch template, ASG or instance. Unpinned bots keep their current image until their next replacement.
 
 ### Added
 
