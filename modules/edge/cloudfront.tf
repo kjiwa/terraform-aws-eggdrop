@@ -42,6 +42,8 @@ resource "aws_cloudfront_distribution" "this" {
     compress               = true
     cache_policy_id        = local.cache_policy_caching_disabled
 
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.this.id
+
     function_association {
       event_type   = "viewer-request"
       function_arn = aws_cloudfront_function.edge.arn
@@ -59,6 +61,8 @@ resource "aws_cloudfront_distribution" "this" {
       compress                 = true
       cache_policy_id          = ordered_cache_behavior.value.cache_policy_id
       origin_request_policy_id = ordered_cache_behavior.value.origin_request_policy_id
+
+      response_headers_policy_id = aws_cloudfront_response_headers_policy.this.id
 
       dynamic "function_association" {
         for_each = ordered_cache_behavior.value.rewrite ? [ordered_cache_behavior.value.function_arn] : []

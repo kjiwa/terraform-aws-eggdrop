@@ -15,6 +15,14 @@ override_resource {
   }
 }
 
+override_resource {
+  target          = aws_cloudfront_response_headers_policy.this
+  override_during = plan
+  values = {
+    id = "00000000-0000-0000-0000-000000000001"
+  }
+}
+
 variables {
   domain_name = "example.com"
   zone_id     = "Z0000000000000TEST"
@@ -72,5 +80,34 @@ run "edge_function_content" {
   assert {
     condition     = strcontains(local.signin_script, "\"eggdrop-token\"") && strcontains(local.signin_script, "location.replace('/status')")
     error_message = "The sign-in page must store the token under token_key and go to the status page."
+  }
+}
+
+run "every_behavior_carries_the_security_headers" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+
+  assert {
+    condition = alltrue(concat(
+      [one(aws_cloudfront_distribution.this.default_cache_behavior).response_headers_policy_id != null],
+      [for b in aws_cloudfront_distribution.this.ordered_cache_behavior : b.response_headers_policy_id != null],
+    ))
+    error_message = "Every cache behavior must attach the response headers policy."
+  }
+
+  assert {
+    condition = (
+      one(one(aws_cloudfront_response_headers_policy.this.security_headers_config).strict_transport_security).access_control_max_age_sec == 31536000
+      && one(one(aws_cloudfront_response_headers_policy.this.security_headers_config).strict_transport_security).include_subdomains == false
+      && one(one(aws_cloudfront_response_headers_policy.this.security_headers_config).strict_transport_security).preload == false
+      && one(one(aws_cloudfront_response_headers_policy.this.security_headers_config).content_type_options).override == true
+      && one(one(aws_cloudfront_response_headers_policy.this.security_headers_config).referrer_policy).referrer_policy == "strict-origin-when-cross-origin"
+      && one(one(aws_cloudfront_response_headers_policy.this.security_headers_config).frame_options).frame_option == "SAMEORIGIN"
+      && one(one(aws_cloudfront_response_headers_policy.this.security_headers_config).content_security_policy).content_security_policy == "frame-ancestors 'self'"
+    )
+    error_message = "The policy must send HSTS (1 year, no subdomains, no preload), nosniff, the referrer policy, X-Frame-Options and the frame-ancestors CSP."
   }
 }

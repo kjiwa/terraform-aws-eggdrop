@@ -12,7 +12,7 @@ locals {
 # the alarm reads silence as down. planned_causes is empty: an outage is no
 # bot connected, and a replacement counts only if it leaves none.
 module "availability" {
-  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/availability?ref=v0.8.0"
+  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/availability?ref=v0.9.0"
 
   name_prefix      = "eggdrop"
   metric_namespace = var.metric_namespace
@@ -31,7 +31,7 @@ module "availability" {
 }
 
 module "host_alarms" {
-  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/host-alarms?ref=v0.8.0"
+  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/host-alarms?ref=v0.9.0"
 
   name_prefix                       = "eggdrop"
   metric_namespace                  = var.metric_namespace
