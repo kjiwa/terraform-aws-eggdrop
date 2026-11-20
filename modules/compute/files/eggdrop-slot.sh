@@ -1,12 +1,6 @@
 #!/bin/sh
-# Picks the nick slot this bot takes before it first connects, so it joins its
-# slot server as its slot nick instead of moving there later. Writes SLOT_FILE
-# with "set eggdrop_boot_slot N", which eggdrop.conf reads. When every slot is
-# held it writes "set eggdrop_boot_server N" if exactly one peer runs another
-# launch template, as the bot it replaces does: that peer is the one that
-# retires, so the bot connects to its server and need not move when it claims
-# the nick. Otherwise, and when the group or a snapshot cannot be read, it
-# writes nothing and the bot boots as the first nick and claims one later.
+# Picks the nick slot this bot takes before it first connects; see "Slot
+# assignment" in the README.
 # Usage: eggdrop-slot ASG_NAME SLOT_FILE NICK...
 # Environment: EGGDROP_INSTANCE_ID, EGGDROP_BUCKET; SLOT_BOOT_ID_FILE for tests.
 set -eu
@@ -14,8 +8,10 @@ set -eu
 # A bot rewrites its snapshot every 900 s on a one-minute tick, so a live bot's
 # snapshot can be a little over 960 s old.
 readonly FRESH_SECONDS=1200
+# One attempt per call: the unit bounds the whole run, not each call.
+export AWS_MAX_ATTEMPTS=1
 readonly BOOT_ID_FILE="${SLOT_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}"
-readonly AWS_TIMEOUTS="--cli-connect-timeout 5 --cli-read-timeout 10"
+readonly AWS_TIMEOUTS="--cli-connect-timeout 2 --cli-read-timeout 5"
 NOW="$(date +%s)"
 readonly NOW
 
@@ -33,39 +29,65 @@ list_peers() {
     --output text
 }
 
-# Prints the snapshot, or nothing when the bot has written none. A failure
-# other than a missing object is an error: the peer may hold a slot.
-read_snapshot() {
+# Prints bots/KEY, or nothing when it does not exist. Any other failure is an
+# error: the peer may hold a slot. Stderr goes to ERR_FILE, apart from the
+# object, and is read only to tell a missing object from the rest.
+read_object() {
   # shellcheck disable=SC2086
-  if _read_out="$(aws s3 cp "s3://$EGGDROP_BUCKET/bots/$1.json" - $AWS_TIMEOUTS --only-show-errors 2>&1)"; then
+  if _read_out="$(aws s3 cp "s3://$EGGDROP_BUCKET/bots/$1" - $AWS_TIMEOUTS --only-show-errors 2>"$ERR_FILE")"; then
+    rm -f "$ERR_FILE"
     printf '%s' "$_read_out"
     return 0
   fi
-  case "$_read_out" in
-  *"(404)"*) return 0 ;;
-  esac
-  echo "$_read_out" >&2
+  if grep -q '(404)' "$ERR_FILE"; then
+    rm -f "$ERR_FILE"
+    return 0
+  fi
+  cat "$ERR_FILE" >&2
+  rm -f "$ERR_FILE"
   return 1
+}
+
+is_number() {
+  case "$1" in
+  '' | *[!0-9]*) return 1 ;;
+  esac
+}
+
+# The slot named by a fresh marker "SLOT UPDATED", else nothing. COUNT is the
+# number of listed nicks.
+marker_slot() {
+  # shellcheck disable=SC2086 # two words
+  set -- $1 "$2"
+  if [ "$#" -eq 3 ] && is_number "$1" && is_number "$2" && [ "$1" -lt "$3" ] && [ $((NOW - $2)) -le "$FRESH_SECONDS" ]; then
+    echo "$1"
+  fi
 }
 
 snapshot_field() {
   printf '%s' "$2" | sed -n "s/.*\"$1\":\"\\{0,1\\}\\([^\",}]*\\).*/\\1/p"
 }
 
-# What a peer's snapshot says about it, given the listed nicks: "held N" when it
-# wears the nick at index N, "claimant" when it has no snapshot yet or wears
-# another nick (it will take a free slot), "ignore" when the snapshot is stale.
-# A disconnected bot keeps its nick for its reconnect, so it holds its slot.
+# What a peer's files say about it, given the listed nicks: "held N" when it
+# wears the nick at index N or has published a fresh marker for N, "claimant"
+# when it has no snapshot yet or wears another nick, "ignore" when the snapshot
+# is stale or malformed.
 peer_role() {
   _role_json="$1"
-  shift
+  _role_marker="$2"
+  shift 2
+  _role_held="$(marker_slot "$_role_marker" "$#")"
+  if [ -n "$_role_held" ]; then
+    echo "held $_role_held"
+    return 0
+  fi
   if [ -z "$_role_json" ]; then
     echo claimant
     return 0
   fi
   _role_updated="$(snapshot_field updated "$_role_json")"
   _role_nick="$(snapshot_field nick "$_role_json")"
-  if [ -z "$_role_updated" ] || [ $((NOW - _role_updated)) -gt "$FRESH_SECONDS" ]; then
+  if ! is_number "$_role_updated" || [ $((NOW - _role_updated)) -gt "$FRESH_SECONDS" ]; then
     echo ignore
     return 0
   fi
@@ -137,8 +159,9 @@ choose_slot() {
     *) continue ;;
     esac
     [ "$_choose_id" != "$EGGDROP_INSTANCE_ID" ] || continue
-    _choose_json="$(read_snapshot "$_choose_id")" || return 1
-    _choose_role="$(peer_role "$_choose_json" "$@")"
+    _choose_json="$(read_object "$_choose_id.json")" || return 1
+    _choose_marker="$(read_object "$_choose_id.slot")" || return 1
+    _choose_role="$(peer_role "$_choose_json" "$_choose_marker" "$@")"
     _choose_peer_slot=x
     case "$_choose_role" in
     "held "*)
@@ -177,6 +200,13 @@ write_slot() {
   mv "$_write_tmp" "$1"
 }
 
+# Peers read it to see a slot taken before the bot's first snapshot exists.
+publish_marker() {
+  # shellcheck disable=SC2086
+  printf '%s %s' "$1" "$NOW" | aws s3 cp - "s3://$EGGDROP_BUCKET/bots/$EGGDROP_INSTANCE_ID.slot" $AWS_TIMEOUTS --only-show-errors ||
+    log "could not publish the slot marker"
+}
+
 main() {
   if [ "$#" -lt 3 ]; then
     echo "usage: eggdrop-slot ASG_NAME SLOT_FILE NICK..." >&2
@@ -185,6 +215,9 @@ main() {
   _main_asg="$1"
   _main_file="$2"
   shift 2
+  ERR_FILE="$_main_file.err"
+  readonly ERR_FILE
+  trap 'log "timed out; booting as the first nick"; rm -f "$_main_file" "$ERR_FILE"; exit 0' TERM
   if slot_file_is_current "$_main_file"; then
     return 0
   fi
@@ -202,6 +235,9 @@ main() {
     return 0
   fi
   write_slot "$_main_file" "$_main_choice"
+  case "$_main_choice" in
+  "slot "*) publish_marker "${_main_choice#slot }" ;;
+  esac
   log "$_main_choice"
 }
 

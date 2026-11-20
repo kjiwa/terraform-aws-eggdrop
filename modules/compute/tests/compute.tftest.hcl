@@ -780,7 +780,7 @@ run "bot_takes_its_slot_before_it_connects" {
   command = plan
 
   assert {
-    condition     = strcontains(aws_s3_object.config["config/eggdrop-slot"].content, "set eggdrop_boot_slot") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "ExecStartPre=-/usr/bin/timeout 45 /usr/local/bin/eggdrop-slot $ASG_NAME $HOME_DIR/slot.tcl $NICKS") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "readonly ASG_NAME=\"${local.name}\"") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "readonly NICKS=\"naju zera\"")
+    condition     = strcontains(aws_s3_object.config["config/eggdrop-slot"].content, "eggdrop_boot_%s") && strcontains(aws_s3_object.config["config/eggdrop-slot"].content, ".slot") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "ExecStartPre=-/usr/bin/timeout 60 /usr/local/bin/eggdrop-slot $ASG_NAME $HOME_DIR/slot.tcl $NICKS") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "readonly ASG_NAME=\"${local.name}\"") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "readonly NICKS=\"naju zera\"")
     error_message = "The unit runs eggdrop-slot before every start, with the group name, the slot file and the nicks, and a failed run must not stop the bot."
   }
 

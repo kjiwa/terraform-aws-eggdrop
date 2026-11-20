@@ -29,8 +29,13 @@ case "$1 $2" in
   cat "$WORK/group"
   ;;
 "s3 cp")
+  if [ "$3" = "-" ]; then
+    cat >"$WORK/bucket/${4##*/}"
+    exit 0
+  fi
   [ ! -e "$WORK/denied" ] || { echo "An error occurred (403) when calling the HeadObject operation: Forbidden" >&2; exit 1; }
   _key="${3##*/}"
+  [ ! -e "$WORK/warn" ] || echo 'warning "updated":1 "nick":"x"' >&2
   [ -f "$WORK/bucket/$_key" ] || { echo "An error occurred (404) when calling the HeadObject operation: Key \"$3\" does not exist" >&2; exit 1; }
   cat "$WORK/bucket/$_key"
   ;;
@@ -52,7 +57,7 @@ EGGDROP_BUCKET="bucket"
 export SLOT_BOOT_ID_FILE EGGDROP_BUCKET
 
 reset() {
-  rm -f "$SLOT_FILE" "$WORK/group" "$WORK/group_fails" "$WORK/denied" "$WORK/bucket/"*
+  rm -f "$WORK/warn" "$SLOT_FILE" "$WORK/group" "$WORK/group_fails" "$WORK/denied" "$WORK/bucket/"*
   echo "boot-one" >"$WORK/boot_id"
   : >"$WORK/group"
 }
@@ -66,6 +71,11 @@ group() {
 snapshot() {
   printf '{"nick":"%s","botname":"%s!bot@host","server_entry":"a.example.net:+6697","server_name":"a.example.net","online_since":%s,"on_slot":true,"channels":[],"probes":{},"updated":%s}' \
     "$2" "$2" "$3" "$((NOW - $4))" >"$WORK/bucket/$1.json"
+}
+
+# marker ID SLOT AGE_SECONDS: a peer's slot marker
+marker() {
+  printf '%s %s' "$2" "$((NOW - $3))" >"$WORK/bucket/$1.slot"
 }
 
 # boot SELF: runs the script as that instance and prints the slot file's
@@ -252,5 +262,44 @@ snapshot i-aaa naju 900 60
 printf '# boot older\nset eggdrop_boot_slot 1\n' >"$SLOT_FILE"
 touch "$WORK/group_fails"
 assert_eq "a slot file from an earlier boot is removed when the call fails" "none" "$(boot i-bbb)"
+
+reset
+group i-000 Pending
+group i-aaa Pending
+marker i-aaa 0 5
+assert_eq "a bot that chose slot 0 a moment ago holds it before its snapshot exists" "set eggdrop_boot_slot 1" "$(boot i-000)"
+
+reset
+group i-000 Pending
+group i-aaa Pending
+marker i-aaa 0 1201
+assert_eq "a stale marker is ignored" "set eggdrop_boot_slot 0" "$(boot i-000)"
+
+reset
+group i-aaa Pending
+group i-bbb Pending
+boot i-aaa >/dev/null
+assert_eq "the choice is published as a marker" "0 $NOW" "$(cat "$WORK/bucket/i-aaa.slot")"
+
+reset
+group i-aaa Pending
+touch "$WORK/group_fails"
+boot i-aaa >/dev/null
+assert_eq "no choice, no marker" "no" "$([ -e "$WORK/bucket/i-aaa.slot" ] && echo yes || echo no)"
+
+reset
+group i-aaa InService
+group i-bbb Pending
+printf '{"nick":"naju","updated":"abc"}' >"$WORK/bucket/i-aaa.json"
+assert_eq "a snapshot with a non-numeric updated is ignored" "set eggdrop_boot_slot 0" "$(boot i-bbb)"
+printf '{"nick":"naju","updated":99x}' >"$WORK/bucket/i-aaa.json"
+assert_eq "a snapshot with a malformed updated is ignored" "set eggdrop_boot_slot 0" "$(boot i-bbb)"
+
+reset
+group i-aaa InService
+group i-bbb Pending
+snapshot i-aaa naju 900 60
+touch "$WORK/warn"
+assert_eq "aws warnings on stderr do not enter the snapshot" "set eggdrop_boot_slot 1" "$(boot i-bbb)"
 
 finish

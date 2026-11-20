@@ -9,10 +9,7 @@ loadmodule irc
 
 set eggdrop_nicks {%{ for nick in nicks } ${nick}%{ endfor } }
 
-# eggdrop-slot writes slot.tcl before each start: eggdrop_boot_slot, the index
-# in eggdrop_nicks of the nick and server a bot takes at boot, or
-# eggdrop_boot_server, the index of the server alone for a spare whose retiring
-# peer holds that slot. Only a plain index is read; anything else is ignored.
+# eggdrop-slot writes slot.tcl (README, "Slot assignment"). Only a plain index is read.
 set eggdrop_boot_slot -1
 set eggdrop_boot_server -1
 if {![catch {open slot.tcl} eggdrop_slot_file]} {
@@ -47,8 +44,7 @@ set prefer-ipv6 1
 set server-timeout 20
 set eggdrop_servers {%{ for server in irc_servers } {${server.host} +${server.port}}%{ endfor } }
 
-# The slot server is tried first and the rest follow in listed order as
-# failover, so a bot with a slot connects to the server it belongs on.
+# The slot server first, the rest in listed order as failover.
 set eggdrop_first_server [expr {max($eggdrop_boot_slot, $eggdrop_boot_server, 0) % [llength $eggdrop_servers]}]
 foreach eggdrop_server [concat [lrange $eggdrop_servers $eggdrop_first_server end] [lrange $eggdrop_servers 0 [expr {$eggdrop_first_server - 1}]]] {
   server add [lindex $eggdrop_server 0] [lindex $eggdrop_server 1]

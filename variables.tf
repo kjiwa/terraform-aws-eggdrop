@@ -14,7 +14,7 @@ variable "alert_email" {
 }
 
 variable "nicks" {
-  description = "IRC nicks the bots take. A booting bot reads its peers and connects as the first free name in the list, to the server of that slot; a bot that finds every name held boots as the first, takes the first one that frees and moves to its server."
+  description = "IRC nicks the bots take. A booting bot takes the first free one (README, Slot assignment)."
   type        = list(string)
   default     = ["eggdrop"]
 
@@ -46,7 +46,7 @@ variable "bots" {
 }
 
 variable "irc_servers" {
-  description = "Servers of one IRC network, tried over TLS. The bot wearing nicks[i] starts at irc_servers[i mod length] and moves to the next when a connection fails, wrapping at the end; a bot with no slot starts at the first. Every host needs an AAAA record unless ipv4_enabled is set."
+  description = "Servers of one IRC network, tried over TLS. The bot wearing nicks[i] starts at irc_servers[i mod length] (README, Slot assignment). Every host needs an AAAA record unless ipv4_enabled is set."
   type = list(object({
     host = string
     port = optional(number, 6697)

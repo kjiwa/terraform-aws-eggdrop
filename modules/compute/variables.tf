@@ -29,7 +29,7 @@ variable "spot_enabled" {
 }
 
 variable "nicks" {
-  description = "IRC nicks the bots take. A booting bot reads its peers and connects as the first free name in the list, to the server of that slot; a bot that finds every name held boots as the first, takes the first one that frees and moves to its server."
+  description = "IRC nicks the bots take. A booting bot takes the first free one (README, Slot assignment)."
   type        = list(string)
 
   validation {
@@ -59,7 +59,7 @@ variable "bots" {
 }
 
 variable "irc_servers" {
-  description = "Servers of one IRC network, tried over TLS, preferring IPv6. The bot wearing nicks[i] starts at irc_servers[i mod length] and moves to the next when a connection fails, wrapping at the end; a bot with no slot starts at the first."
+  description = "Servers of one IRC network, tried over TLS, preferring IPv6. The bot wearing nicks[i] starts at irc_servers[i mod length] (README, Slot assignment)."
   type = list(object({
     host = string
     port = number

@@ -175,7 +175,7 @@ Environment=HOME=$HOME_DIR
 Environment=EGGDROP_INSTANCE_ID=$INSTANCE_ID
 Environment=EGGDROP_BUCKET=$BUCKET
 ExecStartPre=$HOME_DIR/prestart.sh
-ExecStartPre=-/usr/bin/timeout 45 /usr/local/bin/eggdrop-slot $ASG_NAME $HOME_DIR/slot.tcl $NICKS
+ExecStartPre=-/usr/bin/timeout 60 /usr/local/bin/eggdrop-slot $ASG_NAME $HOME_DIR/slot.tcl $NICKS
 ExecStart=/bin/sh -c 'exec $HOME_DIR/eggdrop -t eggdrop.conf 0<>eggdrop.stdin'
 ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always

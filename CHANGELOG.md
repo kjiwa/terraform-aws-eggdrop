@@ -2,20 +2,22 @@
 
 ## v0.11.0
 
-Upgrading: the first plan changes the launch templates, the instance role's policy and the group's refresh warmup, so Terraform starts one make-before-break refresh. The first replacement of that refresh joins as a spare on the first server and moves once; the second joins the server of the bot it replaces.
+Upgrading: the first plan changes the launch templates, the instance role's policy and the refresh warmup, so Terraform starts one make-before-break refresh.
 
 ### Added
 
-- Slot-first join: before each start the bot reads its peers and connects as its slot nick to its slot server, instead of booting as the first nick on the first server and moving later (see "Slot assignment" in the README). A bot that finds every slot held and has exactly one peer on an older launch template connects to that peer's server. The instance role gains `autoscaling:DescribeAutoScalingGroups` and `s3:GetObject` on `bots/*`.
+- Slot-first join: a booting bot connects as its slot nick to its slot server (README, "Slot assignment"). The instance role gains `autoscaling:DescribeAutoScalingGroups`, and `s3:GetObject` on `bots/*`.
 - `bots` must be at most 10.
-- Tests: `scripts/tests/test_slot.sh` and `scripts/tests/test_conf.sh` (tclsh, with Eggdrop's commands stubbed; needs `tclsh` and `terraform`).
+- Tests: `scripts/tests/test_slot.sh` and `scripts/tests/test_conf.sh` (tclsh; CI installs it).
 
 ### Changed
 
-- The launch hook is released when a channel's NAMES list ends after the bot's join, not on the next minute tick; the 300 s fallback stays. `instance_warmup` is 30 s, down from 60.
-- Boot is shorter: the swap file is preallocated, Eggdrop compiles with `make -j2`, and `dnf-automatic` is installed after the bot starts.
-- Status links last 1 hour, not 12. The token format is unchanged, so the status page verifier accepts it.
+Each of these reverts on its own.
+
+- Status links last 1 hour, not 12; the token format is unchanged.
 - The eggdrop unit sets `CapabilityBoundingSet=` (none), `RestrictAddressFamilies`, `ProtectKernelTunables`, `ProtectKernelModules` and `ProtectControlGroups`.
+- Boot order: the swap file is preallocated, Eggdrop compiles with `make -j2`, and `dnf-automatic` is installed after the bot starts.
+- The launch hook is released at the end of a channel's NAMES list, not on the next minute tick; `instance_warmup` is 30 s, down from 60.
 
 ### Fixed
 

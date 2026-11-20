@@ -1,7 +1,7 @@
 #!/bin/sh
 # Renders modules/compute/files/eggdrop.conf.tftpl with Terraform and runs
-# test_conf.tcl against it under tclsh, with Eggdrop's commands stubbed. Skips
-# when tclsh or terraform is missing; CI installs both.
+# test_conf.tcl against it under tclsh, with Eggdrop's commands stubbed. Locally
+# it skips when tclsh or terraform is missing; under CI that is a failure.
 set -eu
 
 TESTS_DIR="$(
@@ -35,6 +35,10 @@ HCL
 main() {
   for _main_tool in tclsh terraform; do
     if ! command -v "$_main_tool" >/dev/null 2>&1; then
+      if [ -n "${CI:-}" ]; then
+        echo "FAIL: $_main_tool is not installed" >&2
+        return 1
+      fi
       echo "skipped: $_main_tool is not installed"
       return 0
     fi
