@@ -11,7 +11,7 @@ Nothing persists. The instance rebuilds its userfile from the module's inputs on
 | Module | Resources |
 | --- | --- |
 | `modules/network` | IPv6-only VPC with a subnet in every availability zone, egress-only internet gateway, S3 gateway endpoint, EC2 Instance Connect Endpoint. No public IPv4 unless `ipv4_enabled`, and no inbound path. |
-| `modules/compute` | Spot Auto Scaling group of `bots` instances across every zone and six burstable types (`t3a`, `t3` and `t4g` nano and micro, x86_64 and arm64), stock Amazon Linux 2023 with unattended security updates, the bot bucket, the rendered Eggdrop config, and a launch hook that holds each new bot in `Pending:Wait` until it is in its channels. |
+| `modules/compute` | Spot Auto Scaling group of `bots` instances across every zone and six burstable types (`t3a`, `t3` and `t4g` nano and micro, x86_64 and arm64), stock Amazon Linux 2023 with unattended security updates and a daily AMI updater, the bot bucket, the rendered Eggdrop config, and a launch hook that holds each new bot in `Pending:Wait` until it is in its channels. |
 | `modules/monitoring` | The [status page](https://github.com/kjiwa/terraform-aws-status-page) availability and alarm modules, with the canary off. |
 | `modules/status` | The status page core plus a plugin that checks an HMAC token. |
 | `modules/edge` | CloudFront and an ACM certificate at the apex of your domain. `/` redirects to `/status`. |
@@ -54,7 +54,8 @@ See `examples/minimal`. Pin a literal `?ref=vX.Y.Z`; before 1.0 a minor release 
 | `eggdrop` | `{ version, sha256 }` of the release to compile. |
 | `nicks`, `bots` | Optional, `["eggdrop"]` and `1`. The names the bots take, and how many run. Every bot boots as the first nick; one that holds no listed name takes the next free one each minute, so a replacement fills the gap. `bots` is at least the number of nicks, and extra bots keep a default name. Use two or more to keep ops through a reclaim. |
 | `spot_enabled`, `active` | Optional: Spot or On-Demand (`true`), sleep switch (`true`). |
-| `image_ids` | Optional, `null`. `{ arm64, x86_64 }` AMI IDs of an Amazon Linux 2023 release to launch. Null tracks the latest, so each AWS release replaces the instance on the next apply. A pinned image that is stale warns on every plan. |
+| `image_ids` | Optional, `null`. `{ arm64, x86_64 }` AMI IDs of an Amazon Linux 2023 release to pin. Null runs the AMI updater instead (see "Updating the image"). Changing a pin replaces the launch templates and so the bots. |
+| `ami_max_age_days` | Optional, `14`. Age past which a running bot's AMI makes the updater replace the bots, when a newer AMI is targeted. |
 | `ipv4_enabled` | Optional, `false`. Gives the instance a public IPv4 address, about 3.65 USD a month, and opens the IRC port over IPv4, for servers with no AAAA record. |
 
 ### Masks
@@ -85,7 +86,11 @@ To roll out a new Eggdrop version, upload the new tarball, then change `eggdrop`
 
 The roster script (`config/eggdrop.tcl`) is applied to running bots in place, but the config reaches a bot only when its instance is replaced, so the two must stay compatible for one release: the script stubs every proc and variable it takes from the config (`eggdrop_on_slot_server`, `eggdrop_instance_id`, `eggdrop_json_string`, `eggdrop_probes_json`, `eggdrop_nicks`, `eggdrop_umode`, `eggdrop_deaf`).
 
-To update a pinned image, read the latest IDs with `aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-<arch>`, where `<arch>` is `arm64` or `x86_64`, and set `image_ids`. AWS announces releases on an SNS topic in us-east-1 that takes email subscriptions (AL2023 user guide, "Receive update notifications"). IDs are per region. `dnf-automatic` applies security updates to a running instance, so a pin ages gracefully, but a stale one still warns.
+### Updating the image
+
+With `image_ids` null, the launch templates take the latest Amazon Linux 2023 AMI when they are created, and keep it: later AWS releases do not show in `terraform plan`. The keel `ami-updater` module runs daily. Once a release is a day old it writes a new launch template version and points the group at it, so the next replacement (a Spot reclaim, a manual refresh) launches the new image. It starts an instance refresh itself only when a running bot's AMI is over `ami_max_age_days` old; that refresh uses the group's make-before-break preferences and launching hook, and the updater does nothing while a refresh runs or the site-down or group-size alarm fires. The alerts topic is notified when a running AMI is over 21 days old. Invoke the `eggdrop-ami-updater` function to run it on demand.
+
+To pin instead, read the latest IDs with `aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-<arch>`, where `<arch>` is `arm64` or `x86_64`, and set `image_ids`. IDs are per region. A pin has no updater: `dnf-automatic` applies security updates to a running instance, but the image ages until you change the pin.
 
 ## Availability
 

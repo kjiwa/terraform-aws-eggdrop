@@ -4,7 +4,16 @@
 
 ### Added
 
+- The keel `ami-updater` module (v0.4.0) runs when `image_ids` is null. It writes a launch template version for each new Amazon Linux 2023 release once it is a day old and points the group at it; it starts a make-before-break refresh only when a running bot's AMI is over `ami_max_age_days` (new, default 14) old, and an alarm notifies the alerts topic past 21 days. Compute outputs `launch_template_ids` and `refresh_preferences` (shared by the group's own instance refresh); monitoring outputs `alarm_topic_arn` and `outage_alarm_names`.
 - Root output `irc_log_group_name`.
+
+### Changed
+
+- Launch templates ignore changes to `image_id`: AWS releases no longer show in a plan, and unpinned bots adopt a new image at their next replacement instead of at the next apply. A change to `image_ids` replaces the templates.
+
+### Removed
+
+- The `image_is_latest` stale-pin check; a pin is the operator's to keep current.
 
 ### Fixed
 

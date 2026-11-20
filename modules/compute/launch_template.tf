@@ -72,5 +72,7 @@ resource "aws_launch_template" "this" {
 
   lifecycle {
     create_before_destroy = true
+    ignore_changes        = [image_id]
+    replace_triggered_by  = [terraform_data.image_pin]
   }
 }

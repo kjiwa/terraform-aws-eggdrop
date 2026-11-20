@@ -10,6 +10,13 @@ locals {
   # alarm window is derived from it.
   slot_gate_seconds = 1800
 
+  # Terraform-triggered and updater-forced refreshes share these.
+  refresh_preferences = {
+    min_healthy_percentage = 100
+    max_healthy_percentage = 100 + ceil(100 / var.bots)
+    instance_warmup        = 60
+  }
+
   # Literal, not read from the ASG and hook: user_data embeds config_hash,
   # which hashes the boot files that name them.
   lifecycle_hook_name = "launching"

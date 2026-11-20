@@ -122,7 +122,7 @@ variable "eggdrop" {
 }
 
 variable "image_ids" {
-  description = "AMI ID per architecture (arm64 and x86_64) to launch instead of the latest Amazon Linux 2023. Null tracks the latest, which replaces the instance whenever AWS publishes a release. A plan warns when a pinned image is stale."
+  description = "AMI ID per architecture (arm64 and x86_64) to launch instead of the latest Amazon Linux 2023. Null seeds the templates with the latest and lets the ami-updater advance them; changing a pin replaces the templates."
   type        = map(string)
   default     = null
 

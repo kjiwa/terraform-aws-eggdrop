@@ -108,3 +108,12 @@ run "on_slot_alarm_window_is_two_gates" {
     error_message = "The alarm must need two jump gates of one-minute breaches."
   }
 }
+
+run "outage_alarms_are_exported_for_the_updater" {
+  command = plan
+
+  assert {
+    condition     = output.outage_alarm_names == ["eggdrop-site-down", "eggdrop-group-size"]
+    error_message = "The AMI updater holds back while the site-down or group-size alarm fires."
+  }
+}
