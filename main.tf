@@ -52,6 +52,7 @@ module "ami_updater" {
   name_prefix         = "eggdrop"
   asg_name            = module.compute.asg_name
   launch_template_ids = module.compute.launch_template_ids
+  instance_role_arns  = [module.compute.instance_role_arn]
   ami_max_age_days    = var.ami_max_age_days
   alarm_topic_arn     = module.monitoring.alarm_topic_arn
 

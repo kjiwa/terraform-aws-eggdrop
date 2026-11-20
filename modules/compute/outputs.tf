@@ -27,3 +27,8 @@ output "refresh_preferences" {
   description = "Healthy percentages and instance warmup of the group's instance refresh."
   value       = local.refresh_preferences
 }
+
+output "instance_role_arn" {
+  description = "ARN of the instance profile's role."
+  value       = aws_iam_role.instance.arn
+}
