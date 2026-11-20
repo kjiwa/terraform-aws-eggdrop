@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.12.0
+
+Upgrading: the plan adds one response headers policy and updates the distribution in place. CloudFront redeploys with no downtime expected; no launch template, ASG or instance changes.
+
+### Added
+
+- Response headers policy on every cache behavior of the status distribution: HSTS (1 year, no subdomains, no preload), `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: SAMEORIGIN` and a `frame-ancestors 'self'` CSP. The frame options and CSP yield to the origin's own.
+
 ## v0.11.0
 
 Upgrading: the first plan changes the launch templates, the instance role's policy and the refresh warmup, so Terraform starts one make-before-break refresh.

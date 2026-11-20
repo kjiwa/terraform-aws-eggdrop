@@ -14,7 +14,7 @@ Nothing persists. The instance rebuilds its userfile from the module's inputs on
 | `modules/compute` | Spot Auto Scaling group of `bots` instances across every zone and six burstable types (`t3a`, `t3` and `t4g` nano and micro, x86_64 and arm64), stock Amazon Linux 2023 with unattended security updates (installed once the bot is running) and a daily AMI updater, the bot bucket, the rendered Eggdrop config, and a launch hook that holds each new bot in `Pending:Wait` until it is in its channels. |
 | `modules/monitoring` | The [status page](https://github.com/kjiwa/terraform-aws-status-page) availability and alarm modules, with the canary off. |
 | `modules/status` | The status page core plus a plugin that checks an HMAC token. |
-| `modules/edge` | CloudFront and an ACM certificate at the apex of your domain. `/` redirects to `/status`. |
+| `modules/edge` | CloudFront and an ACM certificate at the apex of your domain. `/` redirects to `/status`. Every response carries HSTS, `nosniff`, a strict-origin referrer policy, `X-Frame-Options: SAMEORIGIN` and a `frame-ancestors 'self'` CSP. |
 
 ## Usage
 
