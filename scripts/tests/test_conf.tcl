@@ -120,6 +120,19 @@ set i [boot two_by_three "set eggdrop_boot_slot 1" {botnick zera serveraddress b
 check "slot boot: on its slot server" 1 [$i eval {eggdrop_on_slot_server}]
 check "slot boot: slot server is the first added" [lindex [servers $i] 0] [join [$i eval {eggdrop_slot_server}] " "]
 
+# A spare whose retiring peer holds slot 1 takes that server but keeps the
+# default nick, and claims the nick when it frees.
+set i [boot two_by_three "set eggdrop_boot_server 1"]
+check "spare: nick stays the first" naju [$i eval {set nick}]
+check "spare: servers rotated to the retiring peer's" \
+  {{b.example.net +7000} {c.example.net +6697} {a.example.net +6697}} [servers $i]
+set i [boot two_by_three "set eggdrop_boot_server 2"]
+check "spare: index past the nicks is ignored" \
+  {{a.example.net +6697} {b.example.net +7000} {c.example.net +6697}} [servers $i]
+set i [boot two_by_three "set eggdrop_boot_server 1" {botnick naju? online 99000 serveraddress b.example.net:+7000 present {zera}}]
+$i eval {eggdrop_claim_nick 0 0 0 0 0}
+check "spare: claims the nick that frees" naju [$i eval {set ::nick}]
+
 # A bad slot file is ignored.
 foreach {label content} [list \
   not-a-number "set eggdrop_boot_slot x" \

@@ -57,9 +57,9 @@ reset() {
   : >"$WORK/group"
 }
 
-# group ID STATE...
+# group ID STATE [TEMPLATE VERSION]
 group() {
-  printf '%s\t%s\n' "$1" "$2" >>"$WORK/group"
+  printf '%s\t%s\t%s\t%s\n' "$1" "$2" "${3:-lt-1}" "${4:-1}" >>"$WORK/group"
 }
 
 # snapshot ID NICK ONLINE_SINCE AGE_SECONDS
@@ -69,7 +69,7 @@ snapshot() {
 }
 
 # boot SELF: runs the script as that instance and prints the slot file's
-# slot line, or "none" when no file was written.
+# choice line, or "none" when no file was written.
 boot() {
   EGGDROP_INSTANCE_ID="$1"
   export EGGDROP_INSTANCE_ID
@@ -77,7 +77,7 @@ boot() {
   sh "$SLOT" eggdrop "$SLOT_FILE" naju zera >/dev/null 2>&1 || _boot_status=$?
   assert_eq "script exits 0" 0 "$_boot_status"
   if [ -f "$SLOT_FILE" ]; then
-    grep '^set eggdrop_boot_slot ' "$SLOT_FILE" || echo "none"
+    grep '^set eggdrop_boot_' "$SLOT_FILE" || echo "none"
   else
     echo "none"
   fi
@@ -149,6 +149,53 @@ group i-ccc Pending
 snapshot i-aaa naju 900 60
 snapshot i-bbb zera 900 60
 assert_eq "both slots held: spare writes nothing" "none" "$(boot i-ccc)"
+
+reset
+group i-aaa InService lt-1 1
+group i-bbb InService lt-1 2
+group i-ccc Pending lt-1 2
+snapshot i-aaa naju 900 60
+snapshot i-bbb zera 900 60
+assert_eq "both held, one peer on an older template: connect to its server" "set eggdrop_boot_server 0" "$(boot i-ccc)"
+
+reset
+group i-aaa InService lt-1 2
+group i-bbb InService lt-1 1
+group i-ccc Pending lt-1 2
+snapshot i-aaa naju 900 60
+snapshot i-bbb zera 900 60
+assert_eq "the older peer's slot is the one that frees" "set eggdrop_boot_server 1" "$(boot i-ccc)"
+
+reset
+group i-aaa InService lt-1 2
+group i-bbb InService lt-1 1
+group i-ccc Pending lt-1 2
+snapshot i-aaa naju 900 60
+assert_eq "an older peer with no snapshot may hold either slot: nothing written" "none" "$(boot i-ccc)"
+
+reset
+group i-aaa InService lt-1 1
+group i-bbb InService lt-1 1
+group i-ccc Pending lt-1 2
+snapshot i-aaa naju 900 60
+snapshot i-bbb zera 900 60
+assert_eq "two older peers: either may leave, nothing written" "none" "$(boot i-ccc)"
+
+reset
+group i-aaa InService lt-1 1
+group i-bbb InService lt-1 1
+group i-ccc Pending lt-1 1
+snapshot i-aaa naju 900 60
+snapshot i-bbb zera 900 60
+assert_eq "same template as both peers: nothing written" "none" "$(boot i-ccc)"
+
+reset
+group i-aaa InService lt-1 1
+group i-bbb InService lt-1 2
+group i-ccc Pending lt-1 3
+snapshot i-aaa naju 900 60
+snapshot i-bbb zera 900 60
+assert_eq "three templates, two older peers: nothing written" "none" "$(boot i-ccc)"
 
 reset
 group i-aaa InService

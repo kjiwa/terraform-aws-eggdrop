@@ -863,3 +863,12 @@ run "bots_are_at_most_ten" {
 
   expect_failures = [var.bots]
 }
+
+run "spare_may_name_the_server_of_the_bot_it_replaces" {
+  command = plan
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop-slot"].content, "LaunchTemplate.Version") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "eggdrop_boot_server")
+    error_message = "The slot script compares launch template versions and the config reads the server-only choice."
+  }
+}

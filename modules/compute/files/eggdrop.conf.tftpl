@@ -9,17 +9,22 @@ loadmodule irc
 
 set eggdrop_nicks {%{ for nick in nicks } ${nick}%{ endfor } }
 
-# eggdrop-slot writes slot.tcl before each start. Only a plain index into
-# eggdrop_nicks is read from it; anything else leaves the bot a spare.
+# eggdrop-slot writes slot.tcl before each start: eggdrop_boot_slot, the index
+# in eggdrop_nicks of the nick and server a bot takes at boot, or
+# eggdrop_boot_server, the index of the server alone for a spare whose retiring
+# peer holds that slot. Only a plain index is read; anything else is ignored.
 set eggdrop_boot_slot -1
+set eggdrop_boot_server -1
 if {![catch {open slot.tcl} eggdrop_slot_file]} {
   set eggdrop_slot_text [read $eggdrop_slot_file]
   close $eggdrop_slot_file
-  if {[regexp -line {^set eggdrop_boot_slot ([0-9]+)$} $eggdrop_slot_text -> eggdrop_slot_index] && [scan $eggdrop_slot_index %d eggdrop_slot_index] == 1 && $eggdrop_slot_index < [llength $eggdrop_nicks]} {
-    set eggdrop_boot_slot $eggdrop_slot_index
+  foreach eggdrop_slot_kind {slot server} {
+    if {[regexp -line "^set eggdrop_boot_$eggdrop_slot_kind (\[0-9\]+)\$" $eggdrop_slot_text -> eggdrop_slot_index] && [scan $eggdrop_slot_index %d eggdrop_slot_index] == 1 && $eggdrop_slot_index < [llength $eggdrop_nicks]} {
+      set eggdrop_boot_$eggdrop_slot_kind $eggdrop_slot_index
+    }
   }
 }
-unset -nocomplain eggdrop_slot_file eggdrop_slot_text eggdrop_slot_index
+unset -nocomplain eggdrop_slot_file eggdrop_slot_text eggdrop_slot_kind eggdrop_slot_index
 
 # A rehash re-reads this file, so a bot that has claimed a listed name keeps it.
 if {[info exists botnick] && [lsearch -exact -nocase $eggdrop_nicks $botnick] >= 0} {
@@ -42,9 +47,9 @@ set prefer-ipv6 1
 set server-timeout 20
 set eggdrop_servers {%{ for server in irc_servers } {${server.host} +${server.port}}%{ endfor } }
 
-# The bot's slot server is tried first and the rest follow in listed order as
+# The slot server is tried first and the rest follow in listed order as
 # failover, so a bot with a slot connects to the server it belongs on.
-set eggdrop_first_server [expr {max($eggdrop_boot_slot, 0) % [llength $eggdrop_servers]}]
+set eggdrop_first_server [expr {max($eggdrop_boot_slot, $eggdrop_boot_server, 0) % [llength $eggdrop_servers]}]
 foreach eggdrop_server [concat [lrange $eggdrop_servers $eggdrop_first_server end] [lrange $eggdrop_servers 0 [expr {$eggdrop_first_server - 1}]]] {
   server add [lindex $eggdrop_server 0] [lindex $eggdrop_server 1]
 }

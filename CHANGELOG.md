@@ -2,11 +2,11 @@
 
 ## v0.11.0
 
-Upgrading: the first plan changes the launch templates, the instance role's policy and the group's refresh warmup, so Terraform starts one make-before-break refresh. The extra bot of that refresh joins as a spare; the second replacement joins its slot server first.
+Upgrading: the first plan changes the launch templates, the instance role's policy and the group's refresh warmup, so Terraform starts one make-before-break refresh. The first replacement of that refresh joins as a spare on the first server and moves once; the second joins the server of the bot it replaces.
 
 ### Added
 
-- Slot-first join: before each start the bot reads its peers and connects as its slot nick to its slot server, instead of booting as the first nick on the first server and moving later (see "Slot assignment" in the README). The instance role gains `autoscaling:DescribeAutoScalingGroups` and `s3:GetObject` on `bots/*`.
+- Slot-first join: before each start the bot reads its peers and connects as its slot nick to its slot server, instead of booting as the first nick on the first server and moving later (see "Slot assignment" in the README). A bot that finds every slot held and has exactly one peer on an older launch template connects to that peer's server. The instance role gains `autoscaling:DescribeAutoScalingGroups` and `s3:GetObject` on `bots/*`.
 - `bots` must be at most 10.
 - Tests: `scripts/tests/test_slot.sh` and `scripts/tests/test_conf.sh` (tclsh, with Eggdrop's commands stubbed; needs `tclsh` and `terraform`).
 

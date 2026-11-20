@@ -1,9 +1,12 @@
 #!/bin/sh
 # Picks the nick slot this bot takes before it first connects, so it joins its
 # slot server as its slot nick instead of moving there later. Writes SLOT_FILE
-# with "set eggdrop_boot_slot N", which eggdrop.conf reads. Writes nothing, and
-# exits 0, when the group or a snapshot cannot be read or no slot is free: the
-# bot then boots as the first nick and claims one later.
+# with "set eggdrop_boot_slot N", which eggdrop.conf reads. When every slot is
+# held it writes "set eggdrop_boot_server N" if exactly one peer runs another
+# launch template, as the bot it replaces does: that peer is the one that
+# retires, so the bot connects to its server and need not move when it claims
+# the nick. Otherwise, and when the group or a snapshot cannot be read, it
+# writes nothing and the bot boots as the first nick and claims one later.
 # Usage: eggdrop-slot ASG_NAME SLOT_FILE NICK...
 # Environment: EGGDROP_INSTANCE_ID, EGGDROP_BUCKET; SLOT_BOOT_ID_FILE for tests.
 set -eu
@@ -20,13 +23,13 @@ log() {
   echo "[eggdrop-slot] $*" >&2
 }
 
-# Peers that are or will be serving: a bot waiting on its launch hook is
-# Pending:Wait and already holds its nick.
+# One line per instance: id, lifecycle state, launch template id and version.
+# A bot waiting on its launch hook is Pending:Wait and already holds its nick.
 list_peers() {
   # shellcheck disable=SC2086 # AWS_TIMEOUTS is two options
   aws autoscaling describe-auto-scaling-groups $AWS_TIMEOUTS \
     --auto-scaling-group-names "$1" \
-    --query 'AutoScalingGroups[0].Instances[].[InstanceId,LifecycleState]' \
+    --query 'AutoScalingGroups[0].Instances[].[InstanceId,LifecycleState,LaunchTemplate.LaunchTemplateId,LaunchTemplate.Version]' \
     --output text
 }
 
@@ -109,14 +112,26 @@ rank_of() {
   echo "$_rank_position"
 }
 
-# Prints the slot, or nothing for a spare. Fails when it cannot tell.
+# The launch template (id and version) of instance ID in the listing PEERS.
+template_of() {
+  printf '%s\n' "$2" | while read -r _tpl_id _tpl_state _tpl_template _tpl_version; do
+    if [ "$_tpl_id" = "$1" ]; then
+      echo "$_tpl_template $_tpl_version"
+    fi
+  done
+}
+
+# Prints "slot N" for a free slot, "server N" for a spare whose retiring peer
+# holds slot N, or nothing. Fails when it cannot tell.
 choose_slot() {
   _choose_asg="$1"
   shift
   _choose_peers="$(list_peers "$_choose_asg")" || return 1
+  _choose_own="$(template_of "$EGGDROP_INSTANCE_ID" "$_choose_peers")"
   _choose_held=""
+  _choose_older=""
   _choose_unsettled="$EGGDROP_INSTANCE_ID"
-  while read -r _choose_id _choose_state; do
+  while read -r _choose_id _choose_state _choose_template _choose_version; do
     case "$_choose_state" in
     InService | Pending | Pending:Wait | Pending:Proceed) ;;
     *) continue ;;
@@ -124,14 +139,30 @@ choose_slot() {
     [ "$_choose_id" != "$EGGDROP_INSTANCE_ID" ] || continue
     _choose_json="$(read_snapshot "$_choose_id")" || return 1
     _choose_role="$(peer_role "$_choose_json" "$@")"
+    _choose_peer_slot=x
     case "$_choose_role" in
-    "held "*) _choose_held="$_choose_held ${_choose_role#held }" ;;
+    "held "*)
+      _choose_peer_slot="${_choose_role#held }"
+      _choose_held="$_choose_held $_choose_peer_slot"
+      ;;
     claimant) _choose_unsettled="$_choose_unsettled $_choose_id" ;;
     esac
+    if [ -n "$_choose_own" ] && [ "$_choose_template $_choose_version" != "$_choose_own" ] && [ "$_choose_role" != ignore ]; then
+      _choose_older="$_choose_older $_choose_peer_slot"
+    fi
   done <<EOF
 $_choose_peers
 EOF
-  free_slot "$#" "$_choose_held" "$(rank_of "$EGGDROP_INSTANCE_ID" "$_choose_unsettled")"
+  _choose_free="$(free_slot "$#" "$_choose_held" "$(rank_of "$EGGDROP_INSTANCE_ID" "$_choose_unsettled")")"
+  if [ -n "$_choose_free" ]; then
+    echo "slot $_choose_free"
+    return 0
+  fi
+  # shellcheck disable=SC2086 # a word list
+  set -- $_choose_older
+  case "$#:${1:-}" in
+  1:[0-9]*) echo "server $1" ;;
+  esac
 }
 
 # A slot file from this boot survives a service restart; one from an earlier
@@ -142,7 +173,7 @@ slot_file_is_current() {
 
 write_slot() {
   _write_tmp="$1.tmp"
-  printf '# boot %s\nset eggdrop_boot_slot %s\n' "$(cat "$BOOT_ID_FILE")" "$2" >"$_write_tmp"
+  printf '# boot %s\nset eggdrop_boot_%s\n' "$(cat "$BOOT_ID_FILE")" "$2" >"$_write_tmp"
   mv "$_write_tmp" "$1"
 }
 
@@ -162,16 +193,16 @@ main() {
     log "no instance id or bucket; booting as the first nick"
     return 0
   fi
-  if ! _main_slot="$(choose_slot "$_main_asg" "$@")"; then
+  if ! _main_choice="$(choose_slot "$_main_asg" "$@")"; then
     log "could not read the group or its snapshots; booting as the first nick"
     return 0
   fi
-  if [ -z "$_main_slot" ]; then
+  if [ -z "$_main_choice" ]; then
     log "every slot is held; booting as a spare"
     return 0
   fi
-  write_slot "$_main_file" "$_main_slot"
-  log "slot $_main_slot"
+  write_slot "$_main_file" "$_main_choice"
+  log "$_main_choice"
 }
 
 main "$@"
