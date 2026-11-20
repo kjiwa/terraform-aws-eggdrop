@@ -775,3 +775,91 @@ run "roster_script_stubs_what_an_older_conf_lacks" {
     error_message = "A bot launched before the bucket was in its environment writes no snapshot."
   }
 }
+
+run "bot_takes_its_slot_before_it_connects" {
+  command = plan
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop-slot"].content, "set eggdrop_boot_slot") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "ExecStartPre=-/usr/bin/timeout 45 /usr/local/bin/eggdrop-slot ${local.name} $HOME_DIR/slot.tcl naju zera")
+    error_message = "The unit runs eggdrop-slot before every start, with the group name, the slot file and the nicks, and a failed run must not stop the bot."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "slot.tcl") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "eggdrop_boot_slot")
+    error_message = "The config reads the slot file before it sets the nick and the servers."
+  }
+
+  assert {
+    condition = anytrue([
+      for statement in data.aws_iam_policy_document.instance.statement :
+      statement.sid == "ReadBotBucket" && contains(statement.resources, "${aws_s3_bucket.this.arn}/bots/*")
+    ])
+    error_message = "A booting bot reads its peers' snapshots."
+  }
+
+  assert {
+    condition = anytrue([
+      for statement in data.aws_iam_policy_document.instance.statement :
+      statement.sid == "ListGroupInstances" && one(statement.actions) == "autoscaling:DescribeAutoScalingGroups" && one(statement.resources) == "*"
+    ])
+    error_message = "A booting bot lists the group's instances."
+  }
+}
+
+run "boot_is_short" {
+  command = plan
+
+  assert {
+    condition     = strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "fallocate -l 1G /swapfile") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "make -j2")
+    error_message = "Swap is preallocated and the compile uses both cores."
+  }
+
+  assert {
+    condition     = length(split("systemctl enable --now eggdrop.service", base64decode(aws_launch_template.this["x86_64"].user_data))[0]) < length(split("\n  enable_security_updates\n", base64decode(aws_launch_template.this["x86_64"].user_data))[0])
+    error_message = "Unattended updates are installed after the bot starts."
+  }
+
+  assert {
+    condition     = local.refresh_preferences.instance_warmup == 30
+    error_message = "The launch hook already waits for the bot, so the warmup after it is 30 s."
+  }
+}
+
+run "boot_script_globals_are_readonly" {
+  command = plan
+
+  assert {
+    condition     = strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "readonly INSTANCE_ID")
+    error_message = "The instance id is fixed once read."
+  }
+}
+
+run "unit_is_confined" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      for line in ["RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK", "CapabilityBoundingSet=\n", "ProtectKernelTunables=true", "ProtectKernelModules=true", "ProtectControlGroups=true"] :
+      strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), line)
+    ])
+    error_message = "The bot needs sockets and nothing else of the kernel."
+  }
+}
+
+run "status_link_lasts_an_hour" {
+  command = plan
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "set eggdrop_token_ttl 3600") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "(valid for 1 hour)")
+    error_message = "A status link expires after an hour."
+  }
+}
+
+run "bots_are_at_most_ten" {
+  command = plan
+  variables {
+    bots = 11
+  }
+
+  expect_failures = [var.bots]
+}
