@@ -111,14 +111,20 @@ assert_eq "a peer waiting on its launch hook holds its slot" "set eggdrop_boot_s
 reset
 group i-aaa InService
 group i-bbb Pending
-snapshot i-aaa naju 900 901
-assert_eq "snapshot older than 900 s is ignored" "set eggdrop_boot_slot 0" "$(boot i-bbb)"
+snapshot i-aaa naju 900 1201
+assert_eq "snapshot older than 1200 s is ignored" "set eggdrop_boot_slot 0" "$(boot i-bbb)"
 
 reset
 group i-aaa InService
 group i-bbb Pending
 snapshot i-aaa naju 0 60
-assert_eq "snapshot of a disconnected bot holds nothing" "set eggdrop_boot_slot 0" "$(boot i-bbb)"
+assert_eq "a disconnected bot keeps its slot for its reconnect" "set eggdrop_boot_slot 1" "$(boot i-bbb)"
+
+reset
+group i-aaa InService
+group i-bbb Pending
+snapshot i-aaa naju 900 1200
+assert_eq "a snapshot at the freshness limit still counts" "set eggdrop_boot_slot 1" "$(boot i-bbb)"
 
 reset
 group i-bbb Pending
@@ -148,7 +154,13 @@ reset
 group i-aaa InService
 group i-bbb Pending
 snapshot i-aaa naju? 900 60
-assert_eq "a peer on its alternate nick holds no slot" "set eggdrop_boot_slot 0" "$(boot i-bbb)"
+assert_eq "an unsettled peer with the lower id claims the first free slot" "set eggdrop_boot_slot 1" "$(boot i-bbb)"
+
+reset
+group i-aaa Pending
+group i-bbb InService
+snapshot i-bbb naju? 900 60
+assert_eq "an unsettled peer with the higher id leaves the first free slot" "set eggdrop_boot_slot 0" "$(boot i-aaa)"
 
 reset
 group i-aaa Pending
