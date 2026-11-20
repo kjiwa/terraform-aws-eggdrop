@@ -2,11 +2,15 @@
 
 ## v0.12.0
 
-Upgrading: the plan adds one response headers policy and updates the distribution in place. CloudFront redeploys with no downtime expected; no launch template, ASG or instance changes.
+Upgrading: the plan adds one response headers policy, updates the distribution in place, and updates the status Lambda's code and policy (status-page v0.9.0). CloudFront redeploys with no downtime expected; no launch template, ASG or instance changes.
 
 ### Added
 
 - Response headers policy on every cache behavior of the status distribution: HSTS (1 year, no subdomains, no preload), `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: SAMEORIGIN` and a `frame-ancestors 'self'` CSP. The frame options and CSP yield to the origin's own.
+
+### Changed
+
+- The status page is terraform-aws-status-page v0.9.0: 44 px touch targets, scoped captions, the running image's age, median recovery, and a read of the launch template versions for a pending newer image.
 
 ## v0.11.0
 

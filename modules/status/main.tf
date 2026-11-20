@@ -61,7 +61,7 @@ locals {
 }
 
 module "core" {
-  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/status?ref=v0.8.0"
+  source = "git::https://github.com/kjiwa/terraform-aws-status-page.git//modules/status?ref=v0.9.0"
 
   name_prefix      = "eggdrop"
   bucket_name      = "${replace(var.domain_name, ".", "-")}-status"
