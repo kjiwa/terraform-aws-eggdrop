@@ -14,7 +14,7 @@ variable "alert_email" {
 }
 
 variable "nicks" {
-  description = "IRC nicks the bots take. Every bot boots as the first and claims the first free name in the list; extra bots keep a default name."
+  description = "IRC nicks the bots take. A booting bot reads its peers and connects as the first free name in the list, to the server of that slot; a bot that finds every name held boots as the first, takes the first one that frees and moves to its server."
   type        = list(string)
   default     = ["eggdrop"]
 
@@ -30,7 +30,7 @@ variable "nicks" {
 }
 
 variable "bots" {
-  description = "Number of bots the ASG runs. The first len(nicks) take the nicks in order; any more keep a default name."
+  description = "Number of bots the ASG runs, at most 10. Up to len(nicks) of them wear a listed nick; any more keep a default name."
   type        = number
   default     = 1
 
@@ -38,10 +38,15 @@ variable "bots" {
     condition     = var.bots >= length(var.nicks)
     error_message = "bots must be at least the number of nicks, so every nick has a bot."
   }
+
+  validation {
+    condition     = var.bots <= 10
+    error_message = "bots must be at most 10: the nick slots, snapshot reads and refresh headroom are sized for a handful of bots."
+  }
 }
 
 variable "irc_servers" {
-  description = "Servers of one IRC network, tried in order over TLS. The bot starts at the first and moves to the next when a connection fails, wrapping at the end. Every host needs an AAAA record unless ipv4_enabled is set."
+  description = "Servers of one IRC network, tried over TLS. The bot wearing nicks[i] starts at irc_servers[i mod length] and moves to the next when a connection fails, wrapping at the end; a bot with no slot starts at the first. Every host needs an AAAA record unless ipv4_enabled is set."
   type = list(object({
     host = string
     port = optional(number, 6697)

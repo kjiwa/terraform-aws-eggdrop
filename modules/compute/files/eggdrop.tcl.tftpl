@@ -4,7 +4,7 @@ set eggdrop_region "${region}"
 set eggdrop_namespace "${metric_namespace}"
 set eggdrop_domain "${domain_name}"
 set eggdrop_owner "${owner}"
-set eggdrop_token_ttl 43200
+set eggdrop_token_ttl 3600
 
 # This script is applied to a running bot, whose conf is older. Each symbol the
 # conf defines and this script uses is stubbed when the conf lacks it, so the
@@ -226,7 +226,7 @@ proc eggdrop_status {nick uhost handle text} {
     putserv "NOTICE $nick :could not mint a token"
     return 1
   }
-  putserv "NOTICE $nick :https://$eggdrop_domain/signin#token=$token (valid for 12 hours)"
+  putserv "NOTICE $nick :https://$eggdrop_domain/signin#token=$token (valid for 1 hour)"
   return 1
 }
 bind msg - status eggdrop_status

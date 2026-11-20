@@ -1,8 +1,8 @@
 #!/bin/sh
-# Boot glue: swap, unattended security updates, then compile the pinned Eggdrop
-# release from the bot bucket and start it. The readonly assignments below are
-# Terraform templatefile() substitutions baked in at plan time; the rest is
-# plain POSIX sh.
+# Boot glue: swap, then compile the pinned Eggdrop release from the bot bucket,
+# start it, and install unattended security updates. The readonly assignments
+# below are Terraform templatefile() substitutions baked in at plan time; the
+# rest is plain POSIX sh.
 set -eu
 
 readonly REGION="${region}"
@@ -10,6 +10,8 @@ readonly BUCKET="${bucket}"
 readonly EGGDROP_VERSION="${eggdrop_version}"
 readonly EGGDROP_SHA256="${eggdrop_sha256}"
 readonly LOG_GROUP="${log_group}"
+readonly ASG_NAME="${asg_name}"
+readonly NICKS="${nicks}"
 # Changes whenever a boot file does, so the ASG replaces the instance. The
 # roster (eggdrop.tcl) is excluded: eggdrop-config-sync applies it in place.
 readonly CONFIG_HASH="${config_hash}"
@@ -49,7 +51,7 @@ fetch_instance_id() {
 
 enable_swap() {
   log "Creating 1G swap for the compile..."
-  dd if=/dev/zero of=/swapfile bs=1M count=1024
+  fallocate -l 1G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=1024
   chmod 600 /swapfile
   mkswap /swapfile
   swapon /swapfile
@@ -98,7 +100,7 @@ build_eggdrop() {
     cd "eggdrop-$EGGDROP_VERSION"
     runuser -u eggdrop -- ./configure
     runuser -u eggdrop -- make config
-    runuser -u eggdrop -- make
+    runuser -u eggdrop -- make -j2
     runuser -u eggdrop -- make install DEST="$HOME_DIR"
   )
 }
@@ -113,7 +115,8 @@ fetch_config() {
   retry aws s3 cp "s3://$BUCKET/config/eggdrop-spot-drain" /usr/local/bin/eggdrop-spot-drain
   retry aws s3 cp "s3://$BUCKET/config/eggdrop-config-sync" /usr/local/bin/eggdrop-config-sync
   retry aws s3 cp "s3://$BUCKET/config/eggdrop-ready" /usr/local/bin/eggdrop-ready
-  chmod 0755 /usr/local/bin/eggdrop-spot-drain /usr/local/bin/eggdrop-config-sync /usr/local/bin/eggdrop-ready
+  retry aws s3 cp "s3://$BUCKET/config/eggdrop-slot" /usr/local/bin/eggdrop-slot
+  chmod 0755 /usr/local/bin/eggdrop-spot-drain /usr/local/bin/eggdrop-config-sync /usr/local/bin/eggdrop-ready /usr/local/bin/eggdrop-slot
   chmod 0600 "$HOME_DIR/status.key"
   chown -R eggdrop "$HOME_DIR"
 }
@@ -163,6 +166,7 @@ Environment=HOME=$HOME_DIR
 Environment=EGGDROP_INSTANCE_ID=$INSTANCE_ID
 Environment=EGGDROP_BUCKET=$BUCKET
 ExecStartPre=$HOME_DIR/prestart.sh
+ExecStartPre=-/usr/bin/timeout 45 /usr/local/bin/eggdrop-slot $ASG_NAME $HOME_DIR/slot.tcl $NICKS
 ExecStart=/bin/sh -c 'exec $HOME_DIR/eggdrop -t eggdrop.conf 0<>eggdrop.stdin'
 ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
@@ -171,6 +175,11 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+CapabilityBoundingSet=
 
 [Install]
 WantedBy=multi-user.target
@@ -215,8 +224,8 @@ UNIT
 main() {
   log "Config $CONFIG_HASH"
   INSTANCE_ID="$(retry fetch_instance_id)" || INSTANCE_ID=""
+  readonly INSTANCE_ID
   enable_swap
-  enable_security_updates
   install_build_tools
   fetch_tarball
   build_eggdrop
@@ -225,6 +234,7 @@ main() {
   write_units
   systemctl daemon-reload
   systemctl enable --now eggdrop.service eggdrop-spot-drain.service eggdrop-config-sync.timer
+  enable_security_updates
   log "Done."
 }
 

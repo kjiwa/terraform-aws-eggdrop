@@ -18,7 +18,7 @@ locals {
   refresh_preferences = {
     min_healthy_percentage = 100
     max_healthy_percentage = 100 + ceil(100 / var.bots)
-    instance_warmup        = 60
+    instance_warmup        = 30
   }
 
   # Literal, not read from the ASG and hook: user_data embeds config_hash,
@@ -65,6 +65,7 @@ locals {
     "config/eggdrop-spot-drain"  = file("${path.module}/files/spot-drain.sh")
     "config/eggdrop-config-sync" = file("${path.module}/files/config-sync.sh")
     "config/eggdrop-ready"       = file("${path.module}/files/ready.sh")
+    "config/eggdrop-slot"        = file("${path.module}/files/eggdrop-slot.sh")
   }
 
   # The roster: channels, users and owner. The running bot picks changes up

@@ -280,7 +280,7 @@ run "rendered_config" {
   command = plan
 
   assert {
-    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "server add irc.example.net +6697") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set prefer-ipv6 1")
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set eggdrop_servers { {irc.example.net +6697} }") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set prefer-ipv6 1")
     error_message = "The server must be reached over TLS, preferring IPv6."
   }
 
@@ -375,8 +375,8 @@ run "servers_are_listed_in_order" {
   }
 
   assert {
-    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "server add a.example.net +6697\nserver add b.example.net +7000\nserver add c.example.net +6697\n")
-    error_message = "Each server gets one server add line, in the order given."
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set eggdrop_servers { {a.example.net +6697} {b.example.net +7000} {c.example.net +6697} }") && strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "server add [lindex $eggdrop_server 0] [lindex $eggdrop_server 1]")
+    error_message = "Every server is added, starting at the slot server and keeping the listed order after it; scripts/tests/test_conf.tcl runs the rotation."
   }
 }
 
@@ -780,7 +780,7 @@ run "bot_takes_its_slot_before_it_connects" {
   command = plan
 
   assert {
-    condition     = strcontains(aws_s3_object.config["config/eggdrop-slot"].content, "set eggdrop_boot_slot") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "ExecStartPre=-/usr/bin/timeout 45 /usr/local/bin/eggdrop-slot ${local.name} $HOME_DIR/slot.tcl naju zera")
+    condition     = strcontains(aws_s3_object.config["config/eggdrop-slot"].content, "set eggdrop_boot_slot") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "ExecStartPre=-/usr/bin/timeout 45 /usr/local/bin/eggdrop-slot $ASG_NAME $HOME_DIR/slot.tcl $NICKS") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "readonly ASG_NAME=\"${local.name}\"") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "readonly NICKS=\"naju zera\"")
     error_message = "The unit runs eggdrop-slot before every start, with the group name, the slot file and the nicks, and a failed run must not stop the bot."
   }
 

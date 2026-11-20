@@ -28,6 +28,7 @@ data "aws_iam_policy_document" "instance" {
       "${aws_s3_bucket.this.arn}/config/*",
       "${aws_s3_bucket.this.arn}/eggdrop/*",
       "${aws_s3_bucket.this.arn}/secret/*",
+      "${aws_s3_bucket.this.arn}/bots/*",
     ]
   }
 
@@ -47,6 +48,15 @@ data "aws_iam_policy_document" "instance" {
     effect    = "Allow"
     actions   = ["autoscaling:CompleteLifecycleAction"]
     resources = ["arn:aws:autoscaling:${data.aws_region.current.region}:${data.aws_caller_identity.default.account_id}:autoScalingGroup:*:autoScalingGroupName/${local.name}"]
+  }
+
+  # A booting bot lists its peers to choose a nick slot. The action takes no
+  # resource: IAM does not support resource-level permissions for it.
+  statement {
+    sid       = "ListGroupInstances"
+    effect    = "Allow"
+    actions   = ["autoscaling:DescribeAutoScalingGroups"]
+    resources = ["*"]
   }
 
   statement {

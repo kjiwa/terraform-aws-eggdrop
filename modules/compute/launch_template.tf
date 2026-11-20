@@ -36,6 +36,8 @@ resource "aws_launch_template" "this" {
     eggdrop_version = var.eggdrop.version
     eggdrop_sha256  = var.eggdrop.sha256
     log_group       = local.log_group_name
+    asg_name        = local.name
+    nicks           = join(" ", var.nicks)
     config_hash     = local.config_hash
   }))
 
