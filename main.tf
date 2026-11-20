@@ -47,7 +47,7 @@ module "monitoring" {
 # Not with image_ids: a pin is the operator's, so nothing may move it.
 module "ami_updater" {
   count  = var.image_ids == null ? 1 : 0
-  source = "../terraform-aws-keel/modules/ami-updater"
+  source = "git::https://github.com/kjiwa/terraform-aws-keel.git//modules/ami-updater?ref=v0.4.0"
 
   name_prefix         = "eggdrop"
   asg_name            = module.compute.asg_name
