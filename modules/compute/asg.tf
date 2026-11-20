@@ -54,10 +54,10 @@ resource "aws_autoscaling_group" "this" {
   instance_refresh {
     strategy = "Rolling"
     preferences {
-      min_healthy_percentage = 100
-      max_healthy_percentage = 100 + ceil(100 / var.bots)
+      min_healthy_percentage = local.refresh_preferences.min_healthy_percentage
+      max_healthy_percentage = local.refresh_preferences.max_healthy_percentage
       skip_matching          = true
-      instance_warmup        = 60
+      instance_warmup        = local.refresh_preferences.instance_warmup
     }
   }
 }

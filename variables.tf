@@ -141,7 +141,7 @@ variable "eggdrop" {
 }
 
 variable "image_ids" {
-  description = "AMI ID per architecture (arm64 and x86_64) to launch instead of the latest Amazon Linux 2023. Null tracks the latest, which replaces the instance whenever AWS publishes a release. A plan warns when a pinned image is stale."
+  description = "AMI ID per architecture (arm64 and x86_64) to launch instead of the latest Amazon Linux 2023. Null lets the ami-updater follow AWS releases; a pin is never moved, and changing it replaces the bots in a make-before-break refresh."
   type        = map(string)
   default     = null
 
@@ -149,6 +149,12 @@ variable "image_ids" {
     condition     = var.image_ids == null || toset(keys(var.image_ids)) == toset(["arm64", "x86_64"])
     error_message = "image_ids must have exactly the keys arm64 and x86_64."
   }
+}
+
+variable "ami_max_age_days" {
+  description = "Age in days past which a running bot's AMI makes the ami-updater replace the bots in a make-before-break refresh, when a newer AMI is targeted. A refresh replaces the bots one at a time; unused when image_ids is set."
+  type        = number
+  default     = 14
 }
 
 variable "ipv4_enabled" {

@@ -170,23 +170,38 @@ run "pinned_image_reaches_both_templates" {
     condition     = aws_launch_template.this["arm64"].image_id == "ami-0aaaaaaaaaaaaaaaa" && aws_launch_template.this["x86_64"].image_id == "ami-0bbbbbbbbbbbbbbbb"
     error_message = "Each template must launch its pinned image."
   }
-
-  expect_failures = [check.image_is_latest]
 }
 
-run "stale_pin_warns" {
+run "pinned_image_reads_no_ssm_parameter" {
   command = plan
   variables {
-    image_ids = { arm64 = "ami-0123456789abcdef0", x86_64 = "ami-0bbbbbbbbbbbbbbbb" }
+    image_ids = { arm64 = "ami-0aaaaaaaaaaaaaaaa", x86_64 = "ami-0bbbbbbbbbbbbbbbb" }
   }
 
-  expect_failures = [check.image_is_latest]
+  assert {
+    condition     = length(data.aws_ssm_parameter.al2023) == 0
+    error_message = "A pin must not read the SSM parameters."
+  }
 }
 
-run "current_pin_is_quiet" {
+run "changing_the_pin_replaces_the_templates" {
   command = plan
   variables {
-    image_ids = { arm64 = "ami-0123456789abcdef0", x86_64 = "ami-0123456789abcdef0" }
+    image_ids = { arm64 = "ami-0aaaaaaaaaaaaaaaa", x86_64 = "ami-0bbbbbbbbbbbbbbbb" }
+  }
+
+  assert {
+    condition     = terraform_data.image_pin.input == tomap({ arm64 = "ami-0aaaaaaaaaaaaaaaa", x86_64 = "ami-0bbbbbbbbbbbbbbbb" })
+    error_message = "image_pin must carry image_ids: replace_triggered_by replaces the templates when it changes, since image_id itself is ignored."
+  }
+}
+
+run "templates_are_exported_for_the_updater" {
+  command = plan
+
+  assert {
+    condition     = output.launch_template_ids["arm64"] == "lt-0123456789abcdef1" && output.launch_template_ids["x86_64"] == "lt-0123456789abcdef0"
+    error_message = "launch_template_ids must map each architecture to its template."
   }
 }
 

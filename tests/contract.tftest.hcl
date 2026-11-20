@@ -74,6 +74,35 @@ run "defaults_plan_with_the_required_inputs" {
   }
 }
 
+run "unpinned_image_runs_the_updater" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+
+  assert {
+    condition     = length(module.ami_updater) == 1
+    error_message = "Without image_ids the AMI updater must exist."
+  }
+}
+
+run "pinned_image_has_no_updater" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    image_ids = { arm64 = "ami-0aaaaaaaaaaaaaaaa", x86_64 = "ami-0bbbbbbbbbbbbbbbb" }
+  }
+
+  assert {
+    condition     = length(module.ami_updater) == 0
+    error_message = "With image_ids the AMI is pinned, so no updater may move it."
+  }
+}
+
 run "owner_must_be_a_user" {
   command = plan
   providers = {

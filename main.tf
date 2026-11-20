@@ -44,6 +44,24 @@ module "monitoring" {
   active            = var.active
 }
 
+# Not with image_ids: a pin is the operator's, so nothing may move it.
+module "ami_updater" {
+  count  = var.image_ids == null ? 1 : 0
+  source = "git::https://github.com/kjiwa/terraform-aws-keel.git//modules/ami-updater?ref=v0.4.0"
+
+  name_prefix         = "eggdrop"
+  asg_name            = module.compute.asg_name
+  launch_template_ids = module.compute.launch_template_ids
+  instance_role_arns  = [module.compute.instance_role_arn]
+  ami_max_age_days    = var.ami_max_age_days
+  alarm_topic_arn     = module.monitoring.alarm_topic_arn
+
+  # The group's instance_refresh, without skip_matching: the updater only
+  # refreshes when an instance has to be replaced. The group's launching
+  # hook applies to every refresh.
+  refresh_preferences = merge(module.compute.refresh_preferences, { alarm_names = module.monitoring.outage_alarm_names })
+}
+
 module "status" {
   source = "./modules/status"
 
