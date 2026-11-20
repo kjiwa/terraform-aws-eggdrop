@@ -195,18 +195,22 @@ set i [boot two_by_three "" {online 0}]
 $i eval {eggdrop_log_dropped s * "Disconnected from a.example.net:+6697"}
 check "genuine disconnect line logs" 1 [llength [calls $i]]
 
-# The launch hook is released once the bot is in every channel, from the
-# bot's own join as well as the minute tick, and only once.
-set i [boot two_by_three "" {botnick naju online 1 joined 1}]
-$i eval {eggdrop_release_on_join zera z!x@y - #c}
-check "a peer's join releases nothing" {} [calls $i]
-$i eval {eggdrop_release_on_join naju n!x@y - #c}
-check "the bot's own join releases the hook" {{exec /usr/local/bin/eggdrop-ready eggdrop launching}} [calls $i]
+# The launch hook is released once the bot is in every channel, when a
+# channel's NAMES list ends as well as on the minute tick, and only once.
+set i [boot two_by_three "" {botnick naju online 99900 joined 0}]
+$i eval {eggdrop_release_on_names irc.example.net 366 "naju #c :End of /NAMES list."}
+check "not in every channel and under 300 s: wait" {} [calls $i]
+$i eval {incr ::now 300}
+$i eval {eggdrop_release_launch 0 0 0 0 0}
+check "300 s after connecting: release" {{exec /usr/local/bin/eggdrop-ready eggdrop launching}} [calls $i]
+set i [boot two_by_three "" {botnick naju online 99900 joined 1}]
+check "the names handler lets the built-in one run" 0 [$i eval {eggdrop_release_on_names irc.example.net 366 "naju #c :End of /NAMES list."}]
+check "the bot in every channel releases at once" {{exec /usr/local/bin/eggdrop-ready eggdrop launching}} [calls $i]
 $i eval {eggdrop_release_launch 0 0 0 0 0}
 check "the hook is released once" 1 [llength [calls $i]]
-set i [boot two_by_three "" {botnick naju online 1 joined 0}]
-$i eval {eggdrop_release_launch 0 0 0 0 0}
-check "not joined and under 300 s: wait" {} [calls $i]
+set i [boot two_by_three "" {botnick naju online 0 joined 1}]
+$i eval {eggdrop_release_on_names irc.example.net 366 "naju #c :End of /NAMES list."}
+check "disconnected: nothing to release" {} [calls $i]
 
 if {$failures > 0} {
   puts stderr "$failures failed"
