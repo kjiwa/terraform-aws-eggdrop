@@ -47,8 +47,9 @@ resource "aws_subnet" "this" {
 }
 
 # Outbound IPv6 only (IRC, dual-stack AWS APIs); no inbound except ident, no hourly or
-# per-GB charge. With ident the IRC servers' /128 routes use the internet
-# gateway instead, so their tcp/113 queries have a return path.
+# per-GB charge. With ident the ::/0 route uses the internet gateway instead
+# (a route table cannot hold both gateway types for IPv6), so tcp/113 queries
+# have a return path; the security group is then the only inbound control.
 resource "aws_egress_only_internet_gateway" "this" {
   vpc_id = aws_vpc.this.id
 
@@ -75,7 +76,8 @@ resource "aws_route_table_association" "this" {
 resource "aws_route" "ipv6_egress" {
   route_table_id              = aws_route_table.this.id
   destination_ipv6_cidr_block = "::/0"
-  egress_only_gateway_id      = aws_egress_only_internet_gateway.this.id
+  gateway_id                  = var.ident ? aws_internet_gateway.this[0].id : null
+  egress_only_gateway_id      = var.ident ? null : aws_egress_only_internet_gateway.this.id
 }
 
 # With no IPv4 HTTPS egress, this is how the instance reaches S3 (the Eggdrop
@@ -105,13 +107,4 @@ resource "aws_route" "ipv4_egress" {
   route_table_id         = aws_route_table.this.id
   destination_cidr_block = "0.0.0.0/0"
   gateway_id             = aws_internet_gateway.this[0].id
-}
-
-# Longest prefix wins over the ::/0 egress-only route. Everything else keeps
-# leaving through the egress-only gateway.
-resource "aws_route" "ident_ipv6" {
-  for_each                    = local.ident_addresses
-  route_table_id              = aws_route_table.this.id
-  destination_ipv6_cidr_block = "${each.value}/128"
-  gateway_id                  = aws_internet_gateway.this[0].id
 }

@@ -24,6 +24,12 @@ override_resource {
 }
 
 override_resource {
+  target          = aws_egress_only_internet_gateway.this
+  override_during = plan
+  values          = { id = "eigw-0123456789abcdef0" }
+}
+
+override_resource {
   target          = aws_subnet.this["us-west-2a"]
   override_during = plan
   values          = { id = "subnet-0123456789abcdef0" }
@@ -61,8 +67,8 @@ run "ipv6_only_with_no_inbound_path" {
   }
 
   assert {
-    condition     = aws_route.ipv6_egress.destination_ipv6_cidr_block == "::/0"
-    error_message = "IPv6 must leave through the egress-only gateway."
+    condition     = aws_route.ipv6_egress.destination_ipv6_cidr_block == "::/0" && aws_route.ipv6_egress.egress_only_gateway_id != null && aws_route.ipv6_egress.gateway_id == null
+    error_message = "With ident off IPv6 must leave through the egress-only gateway."
   }
 
   assert {
@@ -90,8 +96,8 @@ run "no_ipv4_path_by_default" {
   command = plan
 
   assert {
-    condition     = length(aws_internet_gateway.this) == 0 && length(aws_route.ipv4_egress) == 0 && length(aws_vpc_security_group_egress_rule.app_irc_ipv4) == 0 && length(aws_route.ident_ipv6) == 0 && length(aws_vpc_security_group_ingress_rule.app_ident) == 0
-    error_message = "With ipv4_enabled and ident off there is no internet gateway, IPv4 route, IPv4 egress rule, ident route or ident rule."
+    condition     = length(aws_internet_gateway.this) == 0 && length(aws_route.ipv4_egress) == 0 && length(aws_vpc_security_group_egress_rule.app_irc_ipv4) == 0 && length(aws_vpc_security_group_ingress_rule.app_ident) == 0
+    error_message = "With ipv4_enabled and ident off there is no internet gateway, IPv4 route, IPv4 egress rule or ident rule."
   }
 }
 
@@ -125,8 +131,14 @@ run "one_egress_rule_per_port" {
   }
 }
 
-run "ident_routes_each_server_address_through_the_internet_gateway" {
+run "ident_switches_the_ipv6_default_route_to_the_internet_gateway" {
   command = plan
+
+  override_resource {
+    target          = aws_internet_gateway.this[0]
+    override_during = plan
+    values          = { id = "igw-0123456789abcdef0" }
+  }
   variables {
     ident     = true
     irc_hosts = ["a.example.net", "b.example.net"]
@@ -148,13 +160,8 @@ run "ident_routes_each_server_address_through_the_internet_gateway" {
   }
 
   assert {
-    condition     = toset(keys(aws_route.ident_ipv6)) == toset(["2001:db8::a", "2001:db8::b", "2001:db8::c"]) && alltrue([for route in values(aws_route.ident_ipv6) : endswith(route.destination_ipv6_cidr_block, "/128")])
-    error_message = "Each IRC server address gets one /128 route."
-  }
-
-  assert {
-    condition     = aws_route.ipv6_egress.destination_ipv6_cidr_block == "::/0"
-    error_message = "Every other IPv6 destination still leaves through the egress-only gateway."
+    condition     = aws_route.ipv6_egress.destination_ipv6_cidr_block == "::/0" && aws_route.ipv6_egress.gateway_id == aws_internet_gateway.this[0].id && aws_route.ipv6_egress.egress_only_gateway_id == null
+    error_message = "With ident the ::/0 route targets the internet gateway, the only IPv6 gateway type the route table may use alongside it."
   }
 
   assert {
@@ -177,7 +184,7 @@ run "ident_with_ipv4_keeps_one_internet_gateway" {
   }
 
   assert {
-    condition     = length(aws_internet_gateway.this) == 1 && length(aws_route.ipv4_egress) == 1 && length(aws_route.ident_ipv6) == 1
+    condition     = length(aws_internet_gateway.this) == 1 && length(aws_route.ipv4_egress) == 1
     error_message = "ident and ipv4_enabled share the internet gateway."
   }
 }

@@ -10,7 +10,7 @@ variable "ipv4_enabled" {
 }
 
 variable "ident" {
-  description = "If true each IRC server's IPv6 addresses may reach tcp/113 on the instance, through an internet gateway and one /128 route each."
+  description = "If true each IRC server's IPv6 addresses may reach tcp/113 on the instance, by switching the IPv6 default route to an internet gateway; the security group still limits tcp/113 to those addresses."
   type        = bool
   default     = false
 }
