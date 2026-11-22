@@ -38,6 +38,7 @@ resource "aws_launch_template" "this" {
     log_group       = local.log_group_name
     asg_name        = local.name
     nicks           = join(" ", var.nicks)
+    ident           = var.ident
     config_hash     = local.config_hash
   }))
 

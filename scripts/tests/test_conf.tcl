@@ -29,7 +29,8 @@ proc boot {conf slot {state {}}} {
     set server_adds {}
     set calls {}
     set binds {}
-    proc loadmodule {args} {}
+    set modules {}
+    proc loadmodule {name} {lappend ::modules $name}
     proc logfile {args} {}
     proc server {cmd args} {lappend ::server_adds [join $args " "]}
     proc bind {type flags mask proc} {lappend ::binds [list $type $mask $proc]}
@@ -224,6 +225,16 @@ check "the hook is released once" 1 [llength [calls $i]]
 set i [boot two_by_three "" {botnick naju online 0 joined 1}]
 $i eval {eggdrop_release_on_names irc.example.net 366 "naju #c :End of /NAMES list."}
 check "disconnected: nothing to release" {} [calls $i]
+
+# The built-in ident server is loaded only when asked for, and answers on 113.
+set i [boot ident_on ""]
+check "ident: module loaded" 1 [expr {[lsearch -exact [$i eval {set modules}] ident] >= 0}]
+check "ident: built-in server" 1 [$i eval {set ident-method}]
+check "ident: port" 113 [$i eval {set ident-port}]
+check "ident: username is the nick" naju [$i eval {set username}]
+set i [boot two_by_three ""]
+check "ident off: module not loaded" -1 [lsearch -exact [$i eval {set modules}] ident]
+check "ident off: no ident settings" 0 [$i eval {info exists ident-method}]
 
 if {$failures > 0} {
   puts stderr "$failures failed"

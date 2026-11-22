@@ -47,7 +47,8 @@ resource "aws_subnet" "this" {
 }
 
 # Outbound IPv6 only (IRC, dual-stack AWS APIs); no inbound, no hourly or
-# per-GB charge.
+# per-GB charge. With ident the IRC servers' /128 routes use the internet
+# gateway instead, so their tcp/113 queries have a return path.
 resource "aws_egress_only_internet_gateway" "this" {
   vpc_id = aws_vpc.this.id
 
@@ -91,7 +92,7 @@ resource "aws_vpc_endpoint" "s3" {
 }
 
 resource "aws_internet_gateway" "this" {
-  count  = var.ipv4_enabled ? 1 : 0
+  count  = var.ipv4_enabled || var.ident ? 1 : 0
   vpc_id = aws_vpc.this.id
 
   tags = {
@@ -104,4 +105,13 @@ resource "aws_route" "ipv4_egress" {
   route_table_id         = aws_route_table.this.id
   destination_cidr_block = "0.0.0.0/0"
   gateway_id             = aws_internet_gateway.this[0].id
+}
+
+# Longest prefix wins over the ::/0 egress-only route. Everything else keeps
+# leaving through the egress-only gateway.
+resource "aws_route" "ident_ipv6" {
+  for_each                    = local.ident_addresses
+  route_table_id              = aws_route_table.this.id
+  destination_ipv6_cidr_block = "${each.value}/128"
+  gateway_id                  = aws_internet_gateway.this[0].id
 }

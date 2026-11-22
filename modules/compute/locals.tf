@@ -53,6 +53,7 @@ locals {
   boot_files = {
     "config/eggdrop.conf" = templatefile("${path.module}/files/eggdrop.conf.tftpl", {
       nicks               = var.nicks
+      ident               = var.ident
       irc_servers         = var.irc_servers
       net_type            = var.net_type
       asg_name            = local.name

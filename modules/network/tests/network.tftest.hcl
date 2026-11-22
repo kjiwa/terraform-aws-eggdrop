@@ -7,6 +7,12 @@ mock_provider "aws" {
   }
 }
 
+mock_provider "dns" {
+  mock_data "dns_aaaa_record_set" {
+    defaults = { addrs = ["2001:db8::1"] }
+  }
+}
+
 # Computed at apply; the subnets carve their blocks out of it.
 override_resource {
   target          = aws_vpc.this
@@ -66,7 +72,7 @@ run "ipv6_only_with_no_inbound_path" {
 
   assert {
     condition     = aws_vpc_security_group_ingress_rule.app_ssh_from_eice.from_port == 22 && aws_vpc_security_group_ingress_rule.app_ssh_from_eice.to_port == 22
-    error_message = "The only inbound rule is SSH from the instance connect endpoint."
+    error_message = "Without ident the only inbound rule is SSH from the instance connect endpoint."
   }
 
   assert {
@@ -84,8 +90,8 @@ run "no_ipv4_path_by_default" {
   command = plan
 
   assert {
-    condition     = length(aws_internet_gateway.this) == 0 && length(aws_route.ipv4_egress) == 0 && length(aws_vpc_security_group_egress_rule.app_irc_ipv4) == 0
-    error_message = "With ipv4_enabled off there is no internet gateway, IPv4 route or IPv4 egress rule."
+    condition     = length(aws_internet_gateway.this) == 0 && length(aws_route.ipv4_egress) == 0 && length(aws_vpc_security_group_egress_rule.app_irc_ipv4) == 0 && length(aws_route.ident_ipv6) == 0 && length(aws_vpc_security_group_ingress_rule.app_ident) == 0
+    error_message = "With ipv4_enabled and ident off there is no internet gateway, IPv4 route, IPv4 egress rule, ident route or ident rule."
   }
 }
 
@@ -117,4 +123,76 @@ run "one_egress_rule_per_port" {
     condition     = toset(keys(aws_vpc_security_group_egress_rule.app_irc_ipv6)) == toset(["6697", "7000"]) && toset(keys(aws_vpc_security_group_egress_rule.app_irc_ipv4)) == toset(["6697", "7000"]) && aws_vpc_security_group_egress_rule.app_irc_ipv6["7000"].to_port == 7000 && aws_vpc_security_group_egress_rule.app_irc_ipv4["7000"].from_port == 7000
     error_message = "Every distinct port gets one IPv6 rule and, with ipv4_enabled, one IPv4 rule."
   }
+}
+
+run "ident_routes_each_server_address_through_the_internet_gateway" {
+  command = plan
+  variables {
+    ident     = true
+    irc_hosts = ["a.example.net", "b.example.net"]
+  }
+
+  override_data {
+    target = data.dns_aaaa_record_set.irc["a.example.net"]
+    values = { addrs = ["2001:db8::a"] }
+  }
+
+  override_data {
+    target = data.dns_aaaa_record_set.irc["b.example.net"]
+    values = { addrs = ["2001:db8::b", "2001:db8::c"] }
+  }
+
+  assert {
+    condition     = length(aws_internet_gateway.this) == 1 && length(aws_route.ipv4_egress) == 0
+    error_message = "ident adds an internet gateway and no IPv4 route."
+  }
+
+  assert {
+    condition     = toset(keys(aws_route.ident_ipv6)) == toset(["2001:db8::a", "2001:db8::b", "2001:db8::c"]) && alltrue([for route in values(aws_route.ident_ipv6) : endswith(route.destination_ipv6_cidr_block, "/128")])
+    error_message = "Each IRC server address gets one /128 route."
+  }
+
+  assert {
+    condition     = aws_route.ipv6_egress.destination_ipv6_cidr_block == "::/0"
+    error_message = "Every other IPv6 destination still leaves through the egress-only gateway."
+  }
+
+  assert {
+    condition     = toset([for rule in values(aws_vpc_security_group_ingress_rule.app_ident) : rule.cidr_ipv6]) == toset(["2001:db8::a/128", "2001:db8::b/128", "2001:db8::c/128"]) && alltrue([for rule in values(aws_vpc_security_group_ingress_rule.app_ident) : rule.from_port == 113 && rule.to_port == 113 && rule.ip_protocol == "tcp"])
+    error_message = "One tcp/113 rule per server address, from that /128 only."
+  }
+
+  assert {
+    condition     = alltrue([for rule in values(aws_vpc_security_group_ingress_rule.app_ident) : endswith(rule.cidr_ipv6, "/128")]) && length(aws_vpc_security_group_ingress_rule.app_ident) == 3
+    error_message = "No ident source may be wider than a /128."
+  }
+}
+
+run "ident_with_ipv4_keeps_one_internet_gateway" {
+  command = plan
+  variables {
+    ident        = true
+    ipv4_enabled = true
+    irc_hosts    = ["irc.example.net"]
+  }
+
+  assert {
+    condition     = length(aws_internet_gateway.this) == 1 && length(aws_route.ipv4_egress) == 1 && length(aws_route.ident_ipv6) == 1
+    error_message = "ident and ipv4_enabled share the internet gateway."
+  }
+}
+
+run "ident_needs_an_aaaa_record_per_host" {
+  command = plan
+  variables {
+    ident     = true
+    irc_hosts = ["v4only.example.net"]
+  }
+
+  override_data {
+    target = data.dns_aaaa_record_set.irc["v4only.example.net"]
+    values = { addrs = [] }
+  }
+
+  expect_failures = [data.dns_aaaa_record_set.irc["v4only.example.net"]]
 }

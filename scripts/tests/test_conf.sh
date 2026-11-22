@@ -11,7 +11,7 @@ TESTS_DIR="$(
 readonly TESTS_DIR
 readonly TEMPLATE="$TESTS_DIR/../../modules/compute/files/eggdrop.conf.tftpl"
 
-# render NAME NICKS_HCL SERVERS_HCL: writes $WORK/NAME.conf
+# render NAME NICKS_HCL SERVERS_HCL [IDENT]: writes $WORK/NAME.conf
 render() {
   _render_dir="$WORK/render-$1"
   mkdir -p "$_render_dir"
@@ -20,6 +20,7 @@ output "conf" {
   value = templatefile("$TEMPLATE", {
     nicks               = $2
     irc_servers         = $3
+    ident               = ${4:-false}
     net_type            = "Other"
     asg_name            = "eggdrop"
     log_group           = "/eggdrop/irc"
@@ -47,6 +48,7 @@ main() {
   trap 'rm -rf "$WORK"' EXIT
   render two_by_three '["naju", "zera"]' '[{ host = "a.example.net", port = 6697 }, { host = "b.example.net", port = 7000 }, { host = "c.example.net", port = 6697 }]'
   render three_by_two '["naju", "zera", "kali"]' '[{ host = "a.example.net", port = 6697 }, { host = "b.example.net", port = 7000 }]'
+  render ident_on '["naju", "zera"]' '[{ host = "a.example.net", port = 6697 }]' true
   render one_server '["naju", "zera"]' '[{ host = "a.example.net", port = 6697 }]'
   (cd "$WORK" && tclsh "$TESTS_DIR/test_conf.tcl" "$WORK")
 }

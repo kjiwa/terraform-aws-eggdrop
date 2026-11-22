@@ -86,6 +86,11 @@ variable "irc_servers" {
   }
 }
 
+variable "ident" {
+  description = "If true the config loads Eggdrop's ident module in built-in server mode on tcp/113, and the unit may bind it."
+  type        = bool
+}
+
 variable "channels" {
   description = "Channels the bot joins, keyed by name. ops lists the handles in users that the bot ops on join in that channel. SiteUp is 1 while the bot is connected, ops or not."
   type = map(object({

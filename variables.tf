@@ -168,6 +168,12 @@ variable "ipv4_enabled" {
   default     = false
 }
 
+variable "ident" {
+  description = "If true the bots answer RFC 1413 ident queries (Eggdrop's built-in server on tcp/113), so IRC servers show the nick as the username, without the \"~\". Free: an internet gateway and its routes have no charge; opens inbound tcp/113 to the IRC servers' IPv6 addresses only, resolved at plan time (an address that changes shows as a diff on the next plan). Every irc_servers host needs an AAAA record. Changing it replaces the instances."
+  type        = bool
+  default     = false
+}
+
 variable "spot_enabled" {
   description = "If false the instance runs On-Demand instead of Spot."
   type        = bool
