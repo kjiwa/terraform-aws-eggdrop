@@ -299,8 +299,8 @@ run "rendered_config" {
   }
 
   assert {
-    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "chattr $handle |+fao $channel") && !can(regex("chattr[^\\n]*\\+[a-z]*n", aws_s3_object.config["config/eggdrop.tcl"].content))
-    error_message = "Ops are channel flags, and no user holds +n."
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "chattr $handle [expr {$handle eq $::eggdrop_owner ? \"|+fmao\" : \"|+ao\"}] $channel") && !can(regex("chattr[^\\n]*\\+[a-z]*n", aws_s3_object.config["config/eggdrop.tcl"].content))
+    error_message = "Ops are channel flags, only the owner is +fm, and no user holds +n."
   }
 
   assert {
@@ -357,7 +357,7 @@ run "peers_op_each_other" {
   }
 
   assert {
-    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "chattr peers |+fao $channel")
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "chattr peers |+fmao $channel")
     error_message = "Peers are opped in every channel."
   }
 

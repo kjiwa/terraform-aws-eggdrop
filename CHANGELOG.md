@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.14.0
+
+Upgrading: roster-only. The plan changes `config/eggdrop.tcl` and no launch template or instance; the running bots reload in place within a minute. A listed user loses `+f`, and the owner and the bots gain `+m` and `+f`.
+
+### Added
+
+- `bitch` and `revenge` (both default false) on each `channels` entry. The bots deop unlisted ops with `bitch`, and punish whoever deops or kicks a listed op with `revenge` (deop, remove ops, kick, 120-minute ban). Every channel also gets `revenge-mode 3` and `ban-time 120`.
+- `/msg <bot> reset`, answered only to the owner: reloads the roster, which restores ops, and lifts the bot's bans. Every roster load lifts them too.
+
+### Changed
+
+- Listed users hold `|+ao` instead of `|+fao`, so revenge applies to them. The owner holds `|+fmao` in the channels that list it, and `peers` holds `|+fmao` in every channel.
+
 ## v0.13.1
 
 Upgrading: with `ident` off the plan changes nothing. With it on, the IPv6 default route switches in place from the egress-only gateway to the internet gateway. v0.13.0 fails to apply with `ident` on (`OperationNotPermitted`: a route table cannot hold both gateway types for IPv6); do not use it with `ident`.

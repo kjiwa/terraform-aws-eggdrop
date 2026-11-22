@@ -76,7 +76,7 @@ locals {
       region           = data.aws_region.current.region
       metric_namespace = var.metric_namespace
       domain_name      = var.domain_name
-      channels         = sort(keys(var.channels))
+      channels         = var.channels
       channel_ops      = local.channel_ops
       users            = var.users
       peer_masks       = local.peer_masks
