@@ -52,7 +52,7 @@ provider "registry.terraform.io/hashicorp/aws" {
 
 provider "registry.terraform.io/hashicorp/dns" {
   version     = "3.6.2"
-  constraints = "3.6.2"
+  constraints = ">= 3.4.0"
   hashes = [
     "h1:Drnf/osLf5xAyY2x8ycLdK2/72rw7bljlQO/zM6PzVo=",
     "h1:QN6Adv58HX+o3Qq7xSUIe0CidEACExgGarG97Y5OahQ=",

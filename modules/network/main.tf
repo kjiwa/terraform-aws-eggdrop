@@ -46,7 +46,7 @@ resource "aws_subnet" "this" {
   }
 }
 
-# Outbound IPv6 only (IRC, dual-stack AWS APIs); no inbound, no hourly or
+# Outbound IPv6 only (IRC, dual-stack AWS APIs); no inbound except ident, no hourly or
 # per-GB charge. With ident the IRC servers' /128 routes use the internet
 # gateway instead, so their tcp/113 queries have a return path.
 resource "aws_egress_only_internet_gateway" "this" {
