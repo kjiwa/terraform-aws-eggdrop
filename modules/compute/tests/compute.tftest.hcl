@@ -44,6 +44,7 @@ variables {
   active                  = true
   spot_enabled            = true
   nicks                   = ["naju", "zera"]
+  ident                   = false
   bots                    = 2
   subnet_ipv6_cidr_blocks = ["2001:db8:1:0::/64", "2001:db8:1:1::/64"]
   irc_servers             = [{ host = "irc.example.net", port = 6697 }]
@@ -310,6 +311,37 @@ run "rendered_config" {
   assert {
     condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "channel add #example") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "channel add #second")
     error_message = "Every channel must be added."
+  }
+}
+
+run "ident_is_off_by_default" {
+  command = plan
+
+  assert {
+    condition     = !strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "loadmodule ident") && strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "CapabilityBoundingSet=\n") && !strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "AmbientCapabilities")
+    error_message = "Without ident the config has no ident module and the unit holds no capability."
+  }
+}
+
+run "ident_loads_the_builtin_server_and_may_bind_113" {
+  command = plan
+  variables {
+    ident = true
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "loadmodule ident\nset ident-method 1\nset ident-port 113")
+    error_message = "ident loads the module in built-in server mode on port 113."
+  }
+
+  assert {
+    condition     = strcontains(base64decode(aws_launch_template.this["x86_64"].user_data), "CapabilityBoundingSet=CAP_NET_BIND_SERVICE\nAmbientCapabilities=CAP_NET_BIND_SERVICE\n")
+    error_message = "The unit may bind port 113 as the bot's user and holds nothing else."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.conf"].content, "set username $nick")
+    error_message = "The ident answer is the username, which follows the claimed nick."
   }
 }
 

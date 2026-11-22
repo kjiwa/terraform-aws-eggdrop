@@ -8,3 +8,15 @@ variable "ipv4_enabled" {
   type        = bool
   default     = false
 }
+
+variable "ident" {
+  description = "If true each IRC server's IPv6 addresses may reach tcp/113 on the instance, through an internet gateway and one /128 route each."
+  type        = bool
+  default     = false
+}
+
+variable "irc_hosts" {
+  description = "Hostnames of the IRC servers. With ident, each must have an AAAA record, resolved at plan time."
+  type        = set(string)
+  default     = []
+}

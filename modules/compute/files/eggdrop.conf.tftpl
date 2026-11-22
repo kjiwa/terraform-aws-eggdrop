@@ -5,7 +5,13 @@ loadmodule pbkdf2
 loadmodule channels
 loadmodule server
 loadmodule ctcp
-loadmodule irc
+loadmodule irc%{ if ident }
+
+# The built-in server answers with the nick as the username, so the IRC server
+# does not prefix the ident with "~".
+loadmodule ident
+set ident-method 1
+set ident-port 113%{ endif }
 
 set eggdrop_nicks {%{ for nick in nicks } ${nick}%{ endfor } }
 

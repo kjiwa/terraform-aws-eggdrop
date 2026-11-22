@@ -7,7 +7,9 @@ module "network" {
   source = "./modules/network"
 
   irc_ports    = toset([for server in var.irc_servers : server.port])
+  irc_hosts    = toset([for server in var.irc_servers : server.host])
   ipv4_enabled = var.ipv4_enabled
+  ident        = var.ident
 }
 
 module "compute" {
@@ -19,6 +21,7 @@ module "compute" {
   active                  = var.active
   spot_enabled            = var.spot_enabled
   nicks                   = var.nicks
+  ident                   = var.ident
   bots                    = var.bots
   irc_servers             = var.irc_servers
   net_type                = var.net_type

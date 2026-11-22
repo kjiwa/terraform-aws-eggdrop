@@ -8,6 +8,10 @@ terraform {
       # CloudFront only accepts ACM certificates issued in us-east-1.
       configuration_aliases = [aws.us_east_1]
     }
+    dns = {
+      source  = "hashicorp/dns"
+      version = ">= 3.4"
+    }
     random = {
       source  = "hashicorp/random"
       version = ">= 3.6"

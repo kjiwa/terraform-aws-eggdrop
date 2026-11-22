@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.13.0
+
+Upgrading: with `ident` off (the default) the plan changes nothing. With it on, the plan adds an internet gateway, one `/128` route and one tcp/113 ingress rule per IRC server address, and changes the launch templates, so Terraform starts one make-before-break refresh. Every `irc_servers` host needs an AAAA record, or the plan fails.
+
+### Added
+
+- `ident` (default false): the bots load Eggdrop's ident module in built-in server mode on tcp/113, so IRC servers show the nick as the username, without the `~`. The unit's `CapabilityBoundingSet` becomes `CAP_NET_BIND_SERVICE` with the same ambient capability. Inbound tcp/113 is open only to the AAAA addresses of the `irc_servers`, resolved at plan time by the `hashicorp/dns` provider (pinned to 3.6.2), each routed through the internet gateway as a `/128`; `::/0` stays on the egress-only gateway.
+
 ## v0.12.0
 
 Upgrading: the plan adds one response headers policy, updates the distribution in place, and updates the status Lambda's code and policy (status-page v0.9.0). CloudFront redeploys with no downtime expected; no launch template, ASG or instance changes.

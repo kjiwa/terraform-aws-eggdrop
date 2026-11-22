@@ -28,6 +28,12 @@ mock_provider "aws" {
 
 mock_provider "archive" {}
 
+mock_provider "dns" {
+  mock_data "dns_aaaa_record_set" {
+    defaults = { addrs = ["2001:db8::1"] }
+  }
+}
+
 override_resource {
   target          = module.edge.aws_acm_certificate.this
   override_during = plan
@@ -364,4 +370,16 @@ run "bots_are_at_most_ten" {
   }
 
   expect_failures = [var.bots]
+}
+
+run "ident_plans_end_to_end" {
+  command = plan
+  variables {
+    ident = true
+  }
+
+  assert {
+    condition     = var.ident
+    error_message = "The root plans with ident on, resolving every irc_servers host."
+  }
 }

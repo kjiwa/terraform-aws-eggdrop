@@ -10,7 +10,7 @@ Nothing persists. The instance rebuilds its userfile from the module's inputs on
 
 | Module | Resources |
 | --- | --- |
-| `modules/network` | IPv6-only VPC with a subnet in every availability zone, egress-only internet gateway, S3 gateway endpoint, EC2 Instance Connect Endpoint. No public IPv4 unless `ipv4_enabled`, and no inbound path. |
+| `modules/network` | IPv6-only VPC with a subnet in every availability zone, egress-only internet gateway, S3 gateway endpoint, EC2 Instance Connect Endpoint. No public IPv4 unless `ipv4_enabled`, and no inbound path except tcp/113 from the IRC servers with `ident`. |
 | `modules/compute` | Spot Auto Scaling group of `bots` instances across every zone and six burstable types (`t3a`, `t3` and `t4g` nano and micro, x86_64 and arm64), stock Amazon Linux 2023 with unattended security updates (installed once the bot is running) and a daily AMI updater, the bot bucket, the rendered Eggdrop config, and a launch hook that holds each new bot in `Pending:Wait` until it is in its channels. |
 | `modules/monitoring` | The [status page](https://github.com/kjiwa/terraform-aws-status-page) availability and alarm modules, with the canary off. |
 | `modules/status` | The status page core plus a plugin that checks an HMAC token. |
@@ -57,6 +57,7 @@ See `examples/minimal`. Pin a literal `?ref=vX.Y.Z`; before 1.0 a minor release 
 | `image_ids` | Optional, `null`. `{ arm64, x86_64 }` AMI IDs of an Amazon Linux 2023 release to pin. Null runs the AMI updater instead (see "Updating the image"). Changing a pin replaces the launch templates and so the bots. |
 | `ami_max_age_days` | Optional, `14`. Age past which a running bot's AMI makes the updater replace the bots, when a newer AMI is targeted. |
 | `ipv4_enabled` | Optional, `false`. Gives the instance a public IPv4 address, about 3.65 USD a month, and opens the IRC port over IPv4, for servers with no AAAA record. |
+| `ident` | Optional, `false`. The bots answer RFC 1413 ident queries with Eggdrop's built-in server, so IRC servers show each nick as the username, without the `~`. Every `irc_servers` host needs an AAAA record; its addresses are resolved at plan time and each gets a `/128` route through an internet gateway and a tcp/113 ingress rule. An address that changes shows as a diff on the next plan. Changing it replaces the instances. |
 
 ### Masks
 
@@ -126,7 +127,7 @@ Deaf describes the bots, not the channel. Every channel member, every server ope
 
 ## Cost
 
-About 3 USD a month for two bots at Spot prices in us-west-2: each instance (about 0.0008 USD an hour at the last check, and at most 0.0024 for a `t4g.micro`) with an 8 GB root volume, plus metrics, alarms and logs (the snapshots add about 6,000 S3 PUTs a month, a few cents; log ingestion is negligible). The second bot's volume and metrics are estimated, not measured; one bot costs about 1.2 USD less. CloudFront and Lambda stay inside the free tier. A Route 53 zone is yours to add: 0.50 USD a month at list price, plus 1 USD for a customer-managed DNSSEC key.
+About 3 USD a month for two bots at Spot prices in us-west-2: each instance (about 0.0008 USD an hour at the last check, and at most 0.0024 for a `t4g.micro`) with an 8 GB root volume, plus metrics, alarms and logs (the snapshots add about 6,000 S3 PUTs a month, a few cents; log ingestion is negligible). The second bot's volume and metrics are estimated, not measured; one bot costs about 1.2 USD less. CloudFront and Lambda stay inside the free tier. `ident` costs nothing: an internet gateway and its routes have no charge. A Route 53 zone is yours to add: 0.50 USD a month at list price, plus 1 USD for a customer-managed DNSSEC key.
 
 ## Verification
 
@@ -144,6 +145,7 @@ Unit tests cannot start a bot. Before a release, build Eggdrop on Amazon Linux 2
 
 - Each bot is one Spot instance, in whichever zone has capacity. A replacement takes minutes and the bot is off IRC for that time: the compile is the longest step.
 - One reclaim at a time keeps ops: the other bot stays in the channels and ops the replacement. Simultaneous reclaims, or `bots = 1`, drop ops until someone re-ops a bot.
+- With `ident`, the built-in identd answers any querier with the bot's current nick and shuts after its first reply, so the security group is what limits it to the IRC servers' IPv6 addresses. A server that queries from another address, or over IPv4, gets no answer and the IRC server falls back to the `~` username. A bot connected over IPv4 is not covered, and so is a host whose AAAA records rotate: the plan opens only the addresses it resolved.
 - Bots recognise each other by IPv6 address range. A bot connected over IPv4 (`ipv4_enabled`) is not recognised and is not opped by its peers.
 - The launch hook is a separate resource, so on the first apply of a version that adds it the group's first instances can launch before it exists.
 - A dead or wrong host in `irc_servers` costs a bot one connection attempt (at most 20 s, `server-timeout`) before it moves on; with six dead entries in a row that is about 2 minutes plus the cycle wait of about a minute. If no host answers, no bot connects and the `SiteUp` alarm fires.

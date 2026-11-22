@@ -95,3 +95,29 @@ resource "aws_vpc_security_group_egress_rule" "eice_ssh_to_app" {
   to_port                      = 22
   referenced_security_group_id = aws_security_group.app.id
 }
+
+data "dns_aaaa_record_set" "irc" {
+  for_each = var.ident ? var.irc_hosts : toset([])
+  host     = each.value
+
+  lifecycle {
+    postcondition {
+      condition     = length(self.addrs) > 0
+      error_message = "ident needs an AAAA record for every irc_servers host; ${each.value} has none."
+    }
+  }
+}
+
+locals {
+  ident_addresses = toset(flatten([for record in data.dns_aaaa_record_set.irc : record.addrs]))
+}
+
+resource "aws_vpc_security_group_ingress_rule" "app_ident" {
+  for_each          = local.ident_addresses
+  security_group_id = aws_security_group.app.id
+  description       = "Ident queries from an IRC server."
+  ip_protocol       = "tcp"
+  from_port         = 113
+  to_port           = 113
+  cidr_ipv6         = "${each.value}/128"
+}

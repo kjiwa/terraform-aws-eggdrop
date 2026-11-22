@@ -1,6 +1,6 @@
-# Break-glass SSH. The instance has no inbound path and its role grants no
-# Session Manager access, so this is the only out-of-band way in. Billed only
-# for open tunnel minutes.
+# Break-glass SSH. Without ident the instance has no inbound path, and its role
+# grants no Session Manager access, so this is the only out-of-band way in.
+# Billed only for open tunnel minutes.
 resource "aws_ec2_instance_connect_endpoint" "this" {
   subnet_id          = aws_subnet.this[local.azs[0]].id
   security_group_ids = [aws_security_group.eice.id]
