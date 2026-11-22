@@ -106,9 +106,11 @@ variable "users" {
 }
 
 variable "channels" {
-  description = "Channels the bot joins, keyed by name. ops lists the handles in users that the bot ops on join in that channel. Every channel is joined, and the bots op each other and the listed users there."
+  description = "Channels the bot joins, keyed by name. ops lists the handles in users that the bot ops on join in that channel. Every channel is joined, and the bots op each other and the listed users there. bitch deops anyone opped without being listed, unless a bot or the owner opped them. revenge punishes whoever deops or kicks a listed op, short of the owner and the bots: it deops, removes their ops, kicks and bans for 120 minutes."
   type = map(object({
-    ops = optional(list(string), [])
+    ops     = optional(list(string), [])
+    bitch   = optional(bool, false)
+    revenge = optional(bool, false)
   }))
 
   validation {

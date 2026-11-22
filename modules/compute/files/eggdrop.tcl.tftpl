@@ -30,7 +30,7 @@ foreach {eggdrop_name eggdrop_body} {
 }
 unset eggdrop_name eggdrop_body
 
-# Answer only the status command: every other built-in /msg command is
+# Answer only the status and reset commands: every other built-in /msg command is
 # unbound, so a stranger's message gets no response.
 foreach eggdrop_bind [binds msg] {
   lassign $eggdrop_bind eggdrop_type eggdrop_flags eggdrop_mask eggdrop_hits eggdrop_proc
@@ -38,10 +38,11 @@ foreach eggdrop_bind [binds msg] {
 }
 unset -nocomplain eggdrop_bind eggdrop_type eggdrop_flags eggdrop_mask eggdrop_hits eggdrop_proc
 
-# Users carry no global flags: ops are granted per channel below, and the
-# owner is recognised by handle, so nobody holds +n. A rehash re-reads the
-# userfile but never removes users, so every handle is dropped first and the
-# rendered roster is the whole truth.
+# Users carry no global flags: ops are granted per channel below, so nobody
+# holds +n. Only the bots and the owner are masters and friends: revenge
+# spares friends, so a listed user's deop is still punished. A rehash re-reads
+# the userfile but never removes users, so every handle is dropped first and
+# the rendered roster is the whole truth.
 proc eggdrop_load_users {type} {
   foreach handle [userlist] {
     deluser $handle
@@ -60,15 +61,15 @@ proc eggdrop_load_users {type} {
   foreach mask [lrange {${join(" ", peer_masks)}} 1 end] {
     setuser peers HOSTS $mask
   }
-  foreach channel {${join(" ", channels)}} {
-    chattr peers |+fao $channel
+  foreach channel {${join(" ", keys(channels))}} {
+    chattr peers |+fmao $channel
   }
   foreach {handle channel} {
 %{ for grant in channel_ops ~}
     {${grant.handle}} {${grant.channel}}
 %{ endfor ~}
   } {
-    chattr $handle |+fao $channel
+    chattr $handle [expr {$handle eq $::eggdrop_owner ? "|+fmao" : "|+ao"}] $channel
   }
 }
 bind evnt - userfile-loaded eggdrop_load_users
@@ -98,7 +99,7 @@ proc eggdrop_schedule_op_members {type} {
 bind evnt - userfile-loaded eggdrop_schedule_op_members
 
 set eggdrop_channels {
-%{ for channel in channels ~}
+%{ for channel in keys(channels) ~}
   {${channel}}
 %{ endfor ~}
 }
@@ -115,11 +116,22 @@ proc eggdrop_prune_channels {type} {
 }
 bind evnt - userfile-loaded eggdrop_prune_channels
 
-%{ for channel in channels ~}
+# Revenge bans last ban-time minutes, and a ban on a real user must not outlive
+# a reload. killchanban drops it from the bot's list too, so it is not re-set.
+proc eggdrop_clear_bans {type} {
+  foreach channel [channels] {
+    foreach ban [banlist $channel] {
+      killchanban $channel [lindex $ban 0]
+    }
+  }
+}
+bind evnt - userfile-loaded eggdrop_clear_bans
+
+%{ for channel, settings in channels ~}
 channel add ${channel} {
   chanmode "+nt"
 }
-channel set ${channel} +protectops
+channel set ${channel} +protectops ${settings.bitch ? "+" : "-"}bitch ${settings.revenge ? "+" : "-"}revenge revenge-mode 3 ban-time 120
 %{ endfor ~}
 
 # server-online holds the time of the server's welcome, and 0 while
@@ -230,3 +242,14 @@ proc eggdrop_status {nick uhost handle text} {
   return 1
 }
 bind msg - status eggdrop_status
+
+proc eggdrop_reset {nick uhost handle text} {
+  global eggdrop_owner
+  if {$handle ne $eggdrop_owner} {
+    return 1
+  }
+  reload
+  putserv "NOTICE $nick :roster reloaded and the bot's bans lifted"
+  return 1
+}
+bind msg - reset eggdrop_reset

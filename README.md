@@ -48,7 +48,7 @@ See `examples/minimal`. Pin a literal `?ref=vX.Y.Z`; before 1.0 a minor release 
 | `alert_email` | Receives the DOWN and RECOVERED emails. |
 | `irc_servers` | List of `{ host, port = 6697 }` for one IRC network: 1 to 50 unique pairs, tried in order, wrapping at the end. TLS over IPv6, so each host needs an AAAA record unless `ipv4_enabled`. Egress opens once per distinct port. |
 | `net_type` | Eggdrop's `net-type` for the network of `irc_servers`: EFnet, IRCnet, Undernet, DALnet, Libera, freenode, QuakeNet, Rizon or Other. Each bot's ident and realname follow its claimed nick from its next connect. |
-| `channels` | Channels to join, each with `ops`: the handles in `users` the bot ops there. |
+| `channels` | Channels to join, each with `ops`: the handles in `users` the bot ops there. Optional `bitch` and `revenge` (both `false`) turn on [channel protection](#channel-protection). |
 | `users` | Handle to hostmask patterns of the people the bot recognises. |
 | `owner` | The handle in `users` that may request a status page link. It gets no ops unless a channel lists it. |
 | `eggdrop` | `{ version, sha256 }` of the release to compile. |
@@ -69,6 +69,8 @@ The bot's address changes with every replacement, but a client's does not leave 
 
 The module adds the handle `peers` for the bots' own address ranges (each subnet's `/64`), opped in every channel. `users` and `nicks` may not use that handle.
 
+Ident proves nothing, so trust follows the host part: a mask is only as narrow as its host.
+
 ## Operating
 
 1. Apply. The instance waits for the Eggdrop tarball, up to 30 minutes. In an account that has never launched a Spot instance, the first launch fails with "Authentication Failure" while AWS creates its Spot service-linked role. Apply again: the failed Auto Scaling group is replaced.
@@ -79,13 +81,21 @@ The module adds the handle `peers` for the bots' own address ranges (each subnet
    ```
 
 3. Op one bot once from a client that has ops. It ops the other, and from then on the bots op each other. A bot that rejoins a channel with no peer in it is not opped until someone ops it.
-4. Message the bot `status` from a client whose hostmask matches `owner`. It replies with a link that signs you in for 1 hour.
+4. Message the bot `status` from a client whose hostmask matches `owner`. It replies with a link that signs you in for 1 hour. `reset` from the same client reloads the roster; see [Channel protection](#channel-protection).
 
 To upgrade from v0.1.0, apply with `active = false` first, then apply the new version with `active = true`: the subnets are replaced, which cannot happen while an instance is running in the old one.
 
 To roll out a new Eggdrop version, upload the new tarball, then change `eggdrop`. Changes to `channels`, `users` and `owner` do not replace the instance: the bot checks the bucket every minute and, when the roster differs, reloads in place without leaving IRC. A channel removed from `channels` is dropped from the bot's list but not necessarily parted. Any other change to the rendered config, to `nicks`, `irc_servers` or `image_ids`, or a new status key refreshes the instances one at a time: each new bot waits in `Pending:Wait` until it is in its channels, and the old one is retired after. The refresh needs a peer in place to op the new bot, so it keeps ops with two or more bots; `terraform output asg_name` names the group for a manual `aws autoscaling start-instance-refresh`.
 
 The roster script (`config/eggdrop.tcl`) is applied to running bots in place, but the config reaches a bot only when its instance is replaced, so the two must stay compatible for one release: the script stubs every proc and variable it takes from the config (`eggdrop_on_slot_server`, `eggdrop_instance_id`, `eggdrop_json_string`, `eggdrop_probes_json`, `eggdrop_nicks`, `eggdrop_umode`, `eggdrop_deaf`).
+
+### Channel protection
+
+With `bitch` the bots deop anyone opped without being listed, unless a bot or the owner opped them. With `revenge` they punish whoever deops or kicks a listed op: deop, remove the handle's ops, kick, and ban for 120 minutes. A deopped listed op is re-opped either way.
+
+The bots are masters and friends everywhere, and the owner in the channels that list it, so revenge spares them there and a bot never undoes the owner's ops or deops. The owner's trust follows its mask: anyone matching it is the owner. Other users hold only `+ao`.
+
+A mask that matches a stranger can get a real user punished. Message `reset` to each bot from the owner: it reloads the roster, which restores ops, and lifts the bans in the bot's list. A roster change or an instance replacement does the same. Unlifted bans expire after 120 minutes.
 
 ### Slot assignment
 
