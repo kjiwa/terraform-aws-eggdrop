@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.13.1
+
+Upgrading: with `ident` off the plan changes nothing. With it on, the IPv6 default route switches in place from the egress-only gateway to the internet gateway. v0.13.0 fails to apply with `ident` on (`OperationNotPermitted`: a route table cannot hold both gateway types for IPv6); do not use it with `ident`.
+
+### Fixed
+
+- `ident` no longer adds a `/128` route per IRC server address. The single `::/0` route targets the internet gateway while `ident` is on, and the egress-only gateway otherwise. The per-address tcp/113 security group rules stay, so inbound tcp/113 is still limited to the IRC servers.
+
 ## v0.13.0
 
 Upgrading: with `ident` off (the default) the plan changes nothing. With it on, the plan adds an internet gateway, one `/128` route and one tcp/113 ingress rule per IRC server address, and changes the launch templates, so Terraform starts one make-before-break refresh. Every `irc_servers` host needs an AAAA record, or the plan fails.

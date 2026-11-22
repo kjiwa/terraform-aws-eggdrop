@@ -57,7 +57,7 @@ See `examples/minimal`. Pin a literal `?ref=vX.Y.Z`; before 1.0 a minor release 
 | `image_ids` | Optional, `null`. `{ arm64, x86_64 }` AMI IDs of an Amazon Linux 2023 release to pin. Null runs the AMI updater instead (see "Updating the image"). Changing a pin replaces the launch templates and so the bots. |
 | `ami_max_age_days` | Optional, `14`. Age past which a running bot's AMI makes the updater replace the bots, when a newer AMI is targeted. |
 | `ipv4_enabled` | Optional, `false`. Gives the instance a public IPv4 address, about 3.65 USD a month, and opens the IRC port over IPv4, for servers with no AAAA record. |
-| `ident` | Optional, `false`. The bots answer RFC 1413 ident queries with Eggdrop's built-in server, so IRC servers show each nick as the username, without the `~`. Every `irc_servers` host needs an AAAA record; its addresses are resolved at plan time and each gets a `/128` route through an internet gateway and a tcp/113 ingress rule. An address that changes shows as a diff on the next plan. Changing it replaces the instances. |
+| `ident` | Optional, `false`. The bots answer RFC 1413 ident queries with Eggdrop's built-in server, so IRC servers show each nick as the username, without the `~`. Every `irc_servers` host needs an AAAA record; its addresses are resolved at plan time and each gets a tcp/113 ingress rule. The IPv6 default route switches to an internet gateway; the security group stays the only inbound control. An address that changes shows as a diff on the next plan. Changing it replaces the instances. |
 
 ### Masks
 
@@ -127,7 +127,7 @@ Deaf describes the bots, not the channel. Every channel member, every server ope
 
 ## Cost
 
-About 3 USD a month for two bots at Spot prices in us-west-2: each instance (about 0.0008 USD an hour at the last check, and at most 0.0024 for a `t4g.micro`) with an 8 GB root volume, plus metrics, alarms and logs (the snapshots add about 6,000 S3 PUTs a month, a few cents; log ingestion is negligible). The second bot's volume and metrics are estimated, not measured; one bot costs about 1.2 USD less. CloudFront and Lambda stay inside the free tier. `ident` costs nothing: an internet gateway and its routes have no charge. A Route 53 zone is yours to add: 0.50 USD a month at list price, plus 1 USD for a customer-managed DNSSEC key.
+About 3 USD a month for two bots at Spot prices in us-west-2: each instance (about 0.0008 USD an hour at the last check, and at most 0.0024 for a `t4g.micro`) with an 8 GB root volume, plus metrics, alarms and logs (the snapshots add about 6,000 S3 PUTs a month, a few cents; log ingestion is negligible). The second bot's volume and metrics are estimated, not measured; one bot costs about 1.2 USD less. CloudFront and Lambda stay inside the free tier. `ident` costs nothing: an internet gateway has no charge. A Route 53 zone is yours to add: 0.50 USD a month at list price, plus 1 USD for a customer-managed DNSSEC key.
 
 ## Verification
 
