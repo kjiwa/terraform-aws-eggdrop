@@ -67,6 +67,9 @@ proc handlers {i type mask} {
 }
 
 set i [boot]
+# A rehash re-reads the channel file after the script is sourced, so settings
+# applied at source time are lost: only what the load handlers do counts.
+$i eval {set chancalls {}}
 foreach proc [handlers $i evnt userfile-loaded] {
   $i eval [list $proc userfile-loaded]
 }
@@ -84,9 +87,9 @@ check "a user is +ao, without friend or master" \
   [lsearch -all -inline -index 0 $grants bob]
 
 set chancalls [$i eval {set chancalls}]
-check "a toggled channel is protected and punishes" 1 \
+check "a userfile load applies a toggled channel's settings" 1 \
   [expr {[lsearch -exact $chancalls {set #guarded +protectops +bitch +revenge revenge-mode 3 ban-time 120}] >= 0}]
-check "a default channel is neither" 1 \
+check "a userfile load applies a default channel's settings" 1 \
   [expr {[lsearch -exact $chancalls {set #plain +protectops -bitch -revenge revenge-mode 3 ban-time 120}] >= 0}]
 
 check "a snapshot lists the settings enabled on a channel" \

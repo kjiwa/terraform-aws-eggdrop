@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.1
+
+Upgrading: roster-only. The plan changes `config/eggdrop.tcl` and no launch template or instance; the running bots reload in place within a minute.
+
+### Fixed
+
+- `bitch`, `revenge`, `revenge-mode` and `ban-time` now take effect on a bot that reloads its roster in place. A rehash re-reads the channel file after the script is sourced and restored the previous settings, so only a freshly launched instance had them. They are applied on `userfile-loaded`, after that read.
+
 ## v0.15.0
 
 Upgrading: the plan changes `config/eggdrop.tcl`, the status plugin Lambda and adds one bucket lifecycle configuration; no launch template or instance. The running bots reload in place within a minute.
