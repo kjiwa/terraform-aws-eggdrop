@@ -97,7 +97,7 @@ The bots are masters and friends everywhere, and the owner in the channels that 
 
 A mask that matches a stranger can get a real user punished. Message `reset` to each bot from the owner: it reloads the roster, which restores ops, and lifts the bans in the bot's list. A roster change or an instance replacement does the same. Unlifted bans expire after 120 minutes.
 
-The status page's Bots section shows each channel's enabled settings (`+protectops +bitch +revenge`, or `no protection`), read from the bot itself, so it confirms a roster change was loaded. To test the behaviour from a client: with a second client on a host that matches no roster mask, op it as the owner (the owner is a master, so `bitch` leaves it), then deop the owner from it. A bot re-ops the owner and deops, kicks and bans the second client (`*!*user@*.host`, 120 minutes). `reset` lifts the bans.
+The status page's Bots section shows each channel's enabled settings (`+protectops +bitch +revenge`, or `no channel protection`), read from the bot itself, so it confirms a roster change was loaded. To test the behaviour from a client: with a second client on a host that matches no roster mask, op it as the owner (the owner is a master, so `bitch` leaves it), then deop the owner from it. A bot re-ops the owner and deops, kicks and bans the second client (`*!*user@*.host`, 120 minutes). `reset` lifts the bans.
 
 ### Slot assignment
 

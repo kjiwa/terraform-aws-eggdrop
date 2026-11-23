@@ -92,10 +92,10 @@ def channel_text(channel):
 
 def settings_text(channel):
     """A snapshot from a bot that predates channel settings has none: no claim."""
-    if "settings" not in channel:
+    if not isinstance(channel.get("settings"), list):
         return ""
     if not channel["settings"]:
-        return ", no protection"
+        return ", no channel protection"
     return ", " + " ".join(f"+{name}" for name in channel["settings"])
 
 

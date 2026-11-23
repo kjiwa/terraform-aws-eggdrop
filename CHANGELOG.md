@@ -6,7 +6,7 @@ Upgrading: the plan changes `config/eggdrop.tcl`, the status plugin Lambda and a
 
 ### Added
 
-- The bots' snapshots list each channel's enabled `protectops`, `bitch` and `revenge` settings, and the Bots section shows them (`+protectops +bitch +revenge`, or `no protection`). A snapshot without the list makes no claim.
+- The bots' snapshots list each channel's enabled `protectops`, `bitch` and `revenge` settings, and the Bots section shows them (`+protectops +bitch +revenge`, or `no channel protection`). A snapshot without the list makes no claim.
 
 ### Changed
 
