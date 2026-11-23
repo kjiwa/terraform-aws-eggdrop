@@ -67,6 +67,8 @@ proc handlers {i type mask} {
 }
 
 set i [boot]
+check "no channel setting is applied while the script is sourced" {} \
+  [lsearch -all -inline -index 0 [$i eval {set chancalls}] set]
 # A rehash re-reads the channel file after the script is sourced, so settings
 # applied at source time are lost: only what the load handlers do counts.
 $i eval {set chancalls {}}

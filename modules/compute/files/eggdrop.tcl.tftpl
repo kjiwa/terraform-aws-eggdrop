@@ -127,7 +127,7 @@ proc eggdrop_clear_bans {type} {
 }
 bind evnt - userfile-loaded eggdrop_clear_bans
 
-%{ for channel, settings in channels ~}
+%{ for channel in keys(channels) ~}
 channel add ${channel} {
   chanmode "+nt"
 }
