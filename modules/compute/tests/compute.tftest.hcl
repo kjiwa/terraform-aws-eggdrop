@@ -596,6 +596,16 @@ run "snapshot_compares_stable_fields_and_sends_the_full_body" {
     condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "set json \"\\{[eggdrop_snapshot_body 1],") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "if {$with_members} {")
     error_message = "The body sent must carry member counts, and only the full form may."
   }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "foreach setting {protectops bitch revenge} {") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "[channel get $channel $setting]")
+    error_message = "Each channel's snapshot entry must list its enabled protectops, bitch and revenge settings."
+  }
+
+  assert {
+    condition     = one(aws_s3_bucket_lifecycle_configuration.this.rule).filter[0].prefix == "bots/" && one(aws_s3_bucket_lifecycle_configuration.this.rule).expiration[0].days == 7
+    error_message = "Snapshots under bots/ must expire after 7 days."
+  }
 }
 
 run "boot_survives_a_missing_instance_id" {

@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.15.0
+
+Upgrading: the plan changes `config/eggdrop.tcl`, the status plugin Lambda and adds one bucket lifecycle configuration; no launch template or instance. The running bots reload in place within a minute.
+
+### Added
+
+- The bots' snapshots list each channel's enabled `protectops`, `bitch` and `revenge` settings, and the Bots section shows them (`+protectops +bitch +revenge`, or `no protection`). A snapshot without the list makes no claim.
+
+### Changed
+
+- Objects under `bots/` in the bot bucket expire after 7 days, so retired instances' snapshots no longer accumulate. A live bot rewrites its snapshot at least every 15 minutes.
+
 ## v0.14.0
 
 Upgrading: roster-only. The plan changes `config/eggdrop.tcl` and no launch template or instance; the running bots reload in place within a minute. A listed user loses `+f`, and the owner and the bots gain `+m` and `+f`.

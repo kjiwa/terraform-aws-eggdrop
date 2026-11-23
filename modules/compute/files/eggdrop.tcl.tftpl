@@ -179,7 +179,13 @@ bind time - "* * * * *" eggdrop_heartbeat
 proc eggdrop_channel_json {channel with_members} {
   set joined [botonchan $channel]
   set opped [expr {$joined && [botisop $channel]}]
-  set json "\{\"name\":[eggdrop_json_string $channel],\"joined\":[expr {$joined ? "true" : "false"}],\"opped\":[expr {$opped ? "true" : "false"}]"
+  set settings {}
+  foreach setting {protectops bitch revenge} {
+    if {[channel get $channel $setting]} {
+      lappend settings "\"$setting\""
+    }
+  }
+  set json "\{\"name\":[eggdrop_json_string $channel],\"joined\":[expr {$joined ? "true" : "false"}],\"opped\":[expr {$opped ? "true" : "false"}],\"settings\":\[[join $settings ,]\]"
   if {$with_members} {
     append json ",\"members\":[expr {$joined ? [llength [chanlist $channel]] : 0}]"
   }
