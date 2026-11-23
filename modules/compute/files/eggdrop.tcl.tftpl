@@ -127,12 +127,20 @@ proc eggdrop_clear_bans {type} {
 }
 bind evnt - userfile-loaded eggdrop_clear_bans
 
-%{ for channel, settings in channels ~}
+%{ for channel in keys(channels) ~}
 channel add ${channel} {
   chanmode "+nt"
 }
-channel set ${channel} +protectops ${settings.bitch ? "+" : "-"}bitch ${settings.revenge ? "+" : "-"}revenge revenge-mode 3 ban-time 120
 %{ endfor ~}
+
+# A rehash re-reads the channel file after this script is sourced and restores
+# the settings it held before, so they are applied once that read is done.
+proc eggdrop_set_channels {type} {
+%{ for channel, settings in channels ~}
+  channel set ${channel} +protectops ${settings.bitch ? "+" : "-"}bitch ${settings.revenge ? "+" : "-"}revenge revenge-mode 3 ban-time 120
+%{ endfor ~}
+}
+bind evnt - userfile-loaded eggdrop_set_channels
 
 # server-online holds the time of the server's welcome, and 0 while
 # disconnected. A connected bot publishes SiteUp 1 and a disconnected one
