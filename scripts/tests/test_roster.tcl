@@ -32,7 +32,15 @@ proc boot {} {
     proc adduser {args} {}
     proc setuser {args} {}
     proc chattr {handle flags channel} {lappend ::chattrs [list $handle $flags $channel]}
-    proc channel {args} {lappend ::chancalls $args}
+    set chansettings {#guarded {protectops 1 bitch 1 revenge 1} #plain {protectops 0 bitch 0 revenge 0}}
+    proc channel {args} {
+      if {[lindex $args 0] eq "get"} {
+        return [dict get $::chansettings [lindex $args 1] [lindex $args 2]]
+      }
+      lappend ::chancalls $args
+    }
+    proc botonchan {channel} {return 1}
+    proc botisop {channel} {return 1}
     proc channels {} {return {#guarded #plain}}
     proc utimer {args} {return t1}
     proc banlist {channel} {dict get $::bans $channel}
@@ -80,6 +88,13 @@ check "a toggled channel is protected and punishes" 1 \
   [expr {[lsearch -exact $chancalls {set #guarded +protectops +bitch +revenge revenge-mode 3 ban-time 120}] >= 0}]
 check "a default channel is neither" 1 \
   [expr {[lsearch -exact $chancalls {set #plain +protectops -bitch -revenge revenge-mode 3 ban-time 120}] >= 0}]
+
+check "a snapshot lists the settings enabled on a channel" \
+  {{"name":"","joined":true,"opped":true,"settings":["protectops","bitch","revenge"]}} \
+  [$i eval {eggdrop_channel_json #guarded 0}]
+check "a snapshot lists none for a channel with all disabled" \
+  {{"name":"","joined":true,"opped":true,"settings":[]}} \
+  [$i eval {eggdrop_channel_json #plain 0}]
 
 check "every ban is lifted on a userfile load" \
   [lsort [list {{#guarded} *!*@a.example} {{#guarded} *!*@b.example} {{#plain} *!*@c.example}]] \

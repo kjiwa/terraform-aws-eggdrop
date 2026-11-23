@@ -71,3 +71,22 @@ resource "aws_s3_object" "status_key" {
   content                = var.status_key
   server_side_encryption = "AES256"
 }
+
+# Each retired instance leaves its bots/ snapshot behind. A live bot rewrites its
+# own at least every 900 s.
+resource "aws_s3_bucket_lifecycle_configuration" "this" {
+  bucket = aws_s3_bucket.this.id
+
+  rule {
+    id     = "expire-bot-snapshots"
+    status = "Enabled"
+
+    filter {
+      prefix = "bots/"
+    }
+
+    expiration {
+      days = 7
+    }
+  }
+}

@@ -180,6 +180,39 @@ def test_snapshot_without_user_modes_makes_no_claim():
     assert "not deaf" not in row["caption"]
 
 
+def channel_caption(**fields):
+    channel = {"name": "#one", "joined": True, "opped": True, "members": 4} | fields
+    row = run_bots(["i-1"], {"i-1": snapshot(channels=[channel])})["rows"][0]
+    return row["caption"]
+
+
+def test_channel_shows_the_settings_it_has():
+    caption = channel_caption(settings=["protectops", "bitch", "revenge"])
+    assert "#one opped, 4 members, +protectops +bitch +revenge" in caption
+
+
+def test_channel_with_no_settings_reads_no_channel_protection():
+    assert "#one opped, 4 members, no channel protection" in channel_caption(
+        settings=[]
+    )
+
+
+def test_channel_without_the_settings_key_makes_no_claim():
+    caption = channel_caption()
+    assert "#one opped, 4 members" in caption
+    assert "protect" not in caption
+
+
+def test_channel_with_a_non_list_settings_value_makes_no_claim():
+    assert "protect" not in channel_caption(settings=None)
+
+
+def test_not_joined_channel_shows_no_settings():
+    caption = channel_caption(joined=False, opped=False, settings=["bitch"])
+    assert "#one not joined" in caption
+    assert "bitch" not in caption
+
+
 def test_disconnected_bot_reads_disconnected():
     facts = run_bots(["i-1"], {"i-1": snapshot(online_since=0, server_entry="")})
     assert facts["rows"][0]["value"] == "disconnected"

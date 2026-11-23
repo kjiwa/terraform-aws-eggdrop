@@ -87,7 +87,16 @@ def channel_text(channel):
     if not channel["joined"]:
         return f"{channel['name']} not joined"
     state = "opped" if channel["opped"] else "not opped"
-    return f"{channel['name']} {state}, {channel['members']} members"
+    return f"{channel['name']} {state}, {channel['members']} members{settings_text(channel)}"
+
+
+def settings_text(channel):
+    """A snapshot from a bot that predates channel settings has none: no claim."""
+    if not isinstance(channel.get("settings"), list):
+        return ""
+    if not channel["settings"]:
+        return ", no channel protection"
+    return ", " + " ".join(f"+{name}" for name in channel["settings"])
 
 
 def mode_value(snapshot):
