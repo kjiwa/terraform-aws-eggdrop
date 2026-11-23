@@ -38,8 +38,8 @@ foreach eggdrop_bind [binds msg] {
 }
 unset -nocomplain eggdrop_bind eggdrop_type eggdrop_flags eggdrop_mask eggdrop_hits eggdrop_proc
 
-# Users carry no global flags: ops are granted per channel below, so nobody
-# holds +n. Only the bots and the owner are masters and friends: revenge
+# Users carry no global flags: ops and voice are granted per channel below, so
+# nobody holds +n. Only the bots and the owner are masters and friends: revenge
 # spares friends, so a listed user's deop is still punished. A rehash re-reads
 # the userfile but never removes users, so every handle is dropped first and
 # the rendered roster is the whole truth.
@@ -71,12 +71,19 @@ proc eggdrop_load_users {type} {
   } {
     chattr $handle [expr {$handle eq $::eggdrop_owner ? "|+fmao" : "|+ao"}] $channel
   }
+  foreach {handle channel} {
+%{ for grant in channel_voices ~}
+    {${grant.handle}} {${grant.channel}}
+%{ endfor ~}
+  } {
+    chattr $handle |+gv $channel
+  }
 }
 bind evnt - userfile-loaded eggdrop_load_users
 
 # A reload re-matches members lazily and rechecks nothing, so members who now
-# match the roster are opped here once it has settled.
-proc eggdrop_op_members {} {
+# match the roster are opped or voiced here once it has settled.
+proc eggdrop_grant_members {} {
   foreach channel [channels] {
     if {![botisop $channel]} {
       continue
@@ -88,15 +95,17 @@ proc eggdrop_op_members {} {
       set handle [nick2hand $nick $channel]
       if {[matchattr $handle |o $channel] && [matchattr $handle |a $channel]} {
         pushmode $channel +o $nick
+      } elseif {[matchattr $handle |v $channel] && [matchattr $handle |g $channel] && ![isvoice $nick $channel]} {
+        pushmode $channel +v $nick
       }
     }
   }
 }
 
-proc eggdrop_schedule_op_members {type} {
-  utimer 5 eggdrop_op_members
+proc eggdrop_schedule_grant_members {type} {
+  utimer 5 eggdrop_grant_members
 }
-bind evnt - userfile-loaded eggdrop_schedule_op_members
+bind evnt - userfile-loaded eggdrop_schedule_grant_members
 
 set eggdrop_channels {
 %{ for channel in keys(channels) ~}

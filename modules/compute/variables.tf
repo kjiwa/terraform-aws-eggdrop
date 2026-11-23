@@ -92,9 +92,10 @@ variable "ident" {
 }
 
 variable "channels" {
-  description = "Channels the bot joins, keyed by name. ops lists the handles in users that the bot ops on join in that channel. SiteUp is 1 while the bot is connected, ops or not. bitch and revenge turn on Eggdrop channel protection."
+  description = "Channels the bot joins, keyed by name. ops lists the handles in users that the bot ops on join in that channel, and voices the handles in voices. SiteUp is 1 while the bot is connected, ops or not. bitch and revenge turn on Eggdrop channel protection."
   type = map(object({
     ops     = list(string)
+    voices  = list(string)
     bitch   = optional(bool, false)
     revenge = optional(bool, false)
   }))

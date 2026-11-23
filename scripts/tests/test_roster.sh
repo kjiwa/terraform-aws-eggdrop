@@ -21,10 +21,11 @@ output "roster" {
     metric_namespace = "Eggdrop"
     domain_name      = "status.example.net"
     owner            = "alice"
-    users            = { alice = ["*!*alice@host.example"], bob = ["*!*bob@host.example", "*!*bob@other.example"] }
+    users            = { alice = ["*!*alice@host.example"], bob = ["*!*bob@host.example", "*!*bob@other.example"], carol = ["*!*carol@host.example"] }
     peer_masks       = ["*!*@2001:db8:1:1:*", "*!*@2001:db8:1:2:*"]
-    channels         = { "#guarded" = { ops = ["alice", "bob"], bitch = true, revenge = true }, "#plain" = { ops = ["bob"], bitch = false, revenge = false } }
+    channels         = { "#guarded" = { ops = ["alice", "bob"], voices = [], bitch = true, revenge = true }, "#plain" = { ops = ["bob"], voices = ["carol"], bitch = false, revenge = false } }
     channel_ops      = [{ channel = "#guarded", handle = "alice" }, { channel = "#guarded", handle = "bob" }, { channel = "#plain", handle = "bob" }]
+    channel_voices   = [{ channel = "#plain", handle = "carol" }]
   })
 }
 HCL

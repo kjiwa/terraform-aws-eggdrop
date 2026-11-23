@@ -1,5 +1,6 @@
 # Runs the rendered eggdrop.tcl in a child interpreter with Eggdrop's commands
-# stubbed, and checks the flag grants, channel settings, ban lifting and reset.
+# stubbed, and checks the flag grants, the member sweep, channel settings, ban
+# lifting and reset.
 # Usage: tclsh test_roster.tcl DIR   (DIR holds roster.tcl)
 
 set dir [lindex $argv 0]
@@ -21,6 +22,21 @@ proc boot {} {
     set chattrs {}
     set chancalls {}
     set killed {}
+    set pushed {}
+    set memberhandles {opnick bob voicenick carol voicednick carol oppednick bob strangernick *}
+    set memberflags {bob {o a} carol {g v}}
+    proc chanlist {channel} {
+      if {$channel eq "#plain"} {return {opnick voicenick voicednick oppednick strangernick}}
+      return {}
+    }
+    proc isop {nick channel} {expr {$nick eq "oppednick"}}
+    proc isvoice {nick channel} {expr {$nick eq "voicednick"}}
+    proc nick2hand {nick channel} {dict get $::memberhandles $nick}
+    proc matchattr {handle flags channel} {
+      if {![dict exists $::memberflags $handle]} {return 0}
+      expr {[string index $flags 1] in [dict get $::memberflags $handle]}
+    }
+    proc pushmode {channel mode nick} {lappend ::pushed [list $channel $mode $nick]}
     set sent {}
     set reloads 0
     set bans {#guarded {{*!*@a.example setter 0 0 0} {*!*@b.example setter 0 0 0}} #plain {{*!*@c.example setter 0 0 0}}}
@@ -87,6 +103,17 @@ check "the owner has nothing in a channel that omits it" {} \
 check "a user is +ao, without friend or master" \
   {{bob |+ao #guarded} {bob |+ao #plain}} \
   [lsearch -all -inline -index 0 $grants bob]
+
+check "a voice is +gv, without op" \
+  {{carol |+gv #plain}} \
+  [lsearch -all -inline -index 0 $grants carol]
+
+$i eval eggdrop_grant_members
+check "the sweep ops an unopped op, voices an unvoiced voice, and skips the rest" \
+  {{{#plain} +o opnick} {{#plain} +v voicenick}} \
+  [$i eval {set pushed}]
+check "a userfile load schedules the sweep" 1 \
+  [expr {[lsearch -exact [handlers $i evnt userfile-loaded] eggdrop_schedule_grant_members] >= 0}]
 
 set chancalls [$i eval {set chancalls}]
 check "a userfile load applies a toggled channel's settings" 1 \

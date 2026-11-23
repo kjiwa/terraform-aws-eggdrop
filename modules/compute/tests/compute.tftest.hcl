@@ -49,8 +49,8 @@ variables {
   subnet_ipv6_cidr_blocks = ["2001:db8:1:0::/64", "2001:db8:1:1::/64"]
   irc_servers             = [{ host = "irc.example.net", port = 6697 }]
   net_type                = "IRCnet"
-  channels                = { "#example" = { ops = ["alice", "bob"] }, "#second" = { ops = ["bob"] } }
-  users                   = { alice = ["*!*alice@2001:db8:1:2??:*", "*!*alice@host.example"], bob = ["*!*bob@host.example"] }
+  channels                = { "#example" = { ops = ["alice", "bob"], voices = [] }, "#second" = { ops = ["bob"], voices = ["carol"] } }
+  users                   = { alice = ["*!*alice@2001:db8:1:2??:*", "*!*alice@host.example"], bob = ["*!*bob@host.example"], carol = ["*!*carol@host.example"] }
   owner                   = "alice"
   eggdrop                 = { version = "1.10.2", sha256 = "d6646b630879e1acd9b053ffa12f46667f907145f29af1df0f82749ef3032a94" }
   domain_name             = "example.com"
@@ -256,7 +256,7 @@ run "boot_script_pins_the_release" {
 run "roster_changes_do_not_replace_the_instance" {
   command = plan
   variables {
-    channels = { "#other" = { ops = ["carol"] } }
+    channels = { "#other" = { ops = ["carol"], voices = [] } }
     users    = { carol = ["*!*carol@host.example"] }
     owner    = "carol"
   }
@@ -301,6 +301,11 @@ run "rendered_config" {
   assert {
     condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "chattr $handle [expr {$handle eq $::eggdrop_owner ? \"|+fmao\" : \"|+ao\"}] $channel") && !can(regex("chattr[^\\n]*\\+[a-z]*n", aws_s3_object.config["config/eggdrop.tcl"].content))
     error_message = "Ops are channel flags, only the owner is +fm, and no user holds +n."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "chattr $handle |+gv $channel") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "{carol} {#second}")
+    error_message = "A listed voice gets +gv in the channel that lists them, so the bot voices them on join and re-voices them."
   }
 
   assert {
@@ -362,8 +367,8 @@ run "peers_op_each_other" {
   }
 
   assert {
-    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "proc eggdrop_op_members") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "bind evnt - userfile-loaded eggdrop_schedule_op_members")
-    error_message = "A roster reload must op members who now match."
+    condition     = strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "proc eggdrop_grant_members") && strcontains(aws_s3_object.config["config/eggdrop.tcl"].content, "bind evnt - userfile-loaded eggdrop_schedule_grant_members")
+    error_message = "A roster reload must op or voice members who now match."
   }
 }
 
