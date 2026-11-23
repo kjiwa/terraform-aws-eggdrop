@@ -84,7 +84,7 @@ variable "net_type" {
 }
 
 variable "users" {
-  description = "Handle to hostmask patterns (nick!ident@host, with * and ?) of the people the bot recognises. Use the ident and the VPC's IPv6 /56 of the client that connects, so the mask survives the client's own replacement. A user gets ops only in the channels that list their handle."
+  description = "Handle to hostmask patterns (nick!ident@host, with * and ?) of the people the bot recognises. Use the ident and the VPC's IPv6 /56 of the client that connects, so the mask survives the client's own replacement. A user gets ops or voice only in the channels that list their handle."
   type        = map(list(string))
 
   validation {
@@ -106,9 +106,10 @@ variable "users" {
 }
 
 variable "channels" {
-  description = "Channels the bot joins, keyed by name. ops lists the handles in users that the bot ops on join in that channel. Every channel is joined, and the bots op each other and the listed users there. bitch deops anyone opped without being listed, unless a bot or the owner opped them. revenge punishes whoever deops or kicks a listed op, short of the owner and the bots: it deops, removes their ops, kicks and bans for 120 minutes."
+  description = "Channels the bot joins, keyed by name. ops lists the handles in users that the bot ops on join in that channel. voices lists the handles the bot voices on join, and re-voices if a non-master devoices them. Every channel is joined, and the bots op each other and the listed users there. bitch deops anyone opped without being listed, unless a bot or the owner opped them. revenge punishes whoever deops or kicks a listed op, short of the owner and the bots: it deops, removes their ops, kicks and bans for 120 minutes."
   type = map(object({
     ops     = optional(list(string), [])
+    voices  = optional(list(string), [])
     bitch   = optional(bool, false)
     revenge = optional(bool, false)
   }))
@@ -121,6 +122,21 @@ variable "channels" {
   validation {
     condition     = alltrue([for channel in values(var.channels) : alltrue([for handle in channel.ops : contains(keys(var.users), handle)])])
     error_message = "Every handle in a channel's ops must be a key of users."
+  }
+
+  validation {
+    condition     = alltrue([for channel in values(var.channels) : alltrue([for handle in channel.voices : contains(keys(var.users), handle)])])
+    error_message = "Every handle in a channel's voices must be a key of users."
+  }
+
+  validation {
+    condition     = alltrue([for channel in values(var.channels) : length(setintersection(channel.ops, channel.voices)) == 0])
+    error_message = "A handle cannot be in both a channel's ops and its voices, because an op is never voiced on join, so the voice grant would do nothing."
+  }
+
+  validation {
+    condition     = alltrue([for channel in values(var.channels) : !contains(channel.voices, var.owner) || contains(channel.ops, var.owner)])
+    error_message = "The owner cannot be voiced without being opped in the same channel, because only the ops list grants the owner's trust (+m and +f), which keeps revenge off the owner."
   }
 }
 

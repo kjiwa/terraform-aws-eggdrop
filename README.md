@@ -32,8 +32,8 @@ module "eggdrop" {
 
   irc_servers = [{ host = "irc.example.net" }]
   net_type    = "EFnet"
-  channels    = { "#example" = { ops = ["alice"] } }
-  users       = { alice = ["*!*alice@2001:db8:1:2??:*"] }
+  channels    = { "#example" = { ops = ["alice"], voices = ["bob"] } }
+  users       = { alice = ["*!*alice@2001:db8:1:2??:*"], bob = ["*!*bob@2001:db8:1:3??:*"] }
   owner       = "alice"
 
   eggdrop = { version = "1.10.2", sha256 = "<sha256 of eggdrop-1.10.2.tar.gz>" }
@@ -48,7 +48,7 @@ See `examples/minimal`. Pin a literal `?ref=vX.Y.Z`; before 1.0 a minor release 
 | `alert_email` | Receives the DOWN and RECOVERED emails. |
 | `irc_servers` | List of `{ host, port = 6697 }` for one IRC network: 1 to 50 unique pairs, tried in order, wrapping at the end. TLS over IPv6, so each host needs an AAAA record unless `ipv4_enabled`. Egress opens once per distinct port. |
 | `net_type` | Eggdrop's `net-type` for the network of `irc_servers`: EFnet, IRCnet, Undernet, DALnet, Libera, freenode, QuakeNet, Rizon or Other. Each bot's ident and realname follow its claimed nick from its next connect. |
-| `channels` | Channels to join, each with `ops`: the handles in `users` the bot ops there. Optional `bitch` and `revenge` (both `false`) turn on [channel protection](#channel-protection). |
+| `channels` | Channels to join, each with `ops` and `voices`: the handles in `users` the bot ops or voices there (a handle is in one list, not both). Optional `bitch` and `revenge` (both `false`) turn on [channel protection](#channel-protection). |
 | `users` | Handle to hostmask patterns of the people the bot recognises. |
 | `owner` | The handle in `users` that may request a status page link. It gets no ops unless a channel lists it. |
 | `eggdrop` | `{ version, sha256 }` of the release to compile. |
@@ -70,6 +70,26 @@ The bot's address changes with every replacement, but a client's does not leave 
 The module adds the handle `peers` for the bots' own address ranges (each subnet's `/64`), opped in every channel. `users` and `nicks` may not use that handle.
 
 Ident proves nothing, so trust follows the host part: a mask is only as narrow as its host.
+
+### Coming from eggdrop.conf
+
+| Eggdrop | Here | Why |
+| --- | --- | --- |
+| `.+user`, `.+host` | `users` | Every handle is re-added on each roster load, so the roster is the whole userfile. |
+| `chattr h \|+ao #c` | `ops` | Flags are per channel; no user holds a global flag. |
+| `chattr h \|+gv #c` | `voices` | `g` voices on join and re-voices after a devoice by a non-master. |
+| Owner | `owner` | `\|+fmao` in the channels that list it, never `+n`. |
+| `channel add` | `channels` keys | Each channel is added with `chanmode "+nt"`. |
+| `chanset +bitch`, `+revenge` | `bitch`, `revenge` | Booleans per channel, both `false` by default. |
+| `chanset +protectops` | Always on | A deopped listed op is re-opped. |
+| `revenge-mode 3` | Fixed | Revenge deops, removes ops, kicks and bans. |
+| `ban-time 120` | Fixed | Matches the lifetime of a revenge ban. |
+| `chanmode +nt` | Fixed | Set on every channel. |
+| `nick`, `altnick`, `username`, `realname` | `nicks` | The first nick is the default, `altnick` is that nick plus `?`, and username and realname follow the claimed nick. |
+| `server add`, `net-type` | `irc_servers`, `net_type` | TLS only. |
+| `aop-delay`, `flood-*`, `ban-type` | Unset | Left at Eggdrop's own defaults. |
+
+Not supported: the partyline, DCC and telnet (the config has no `listen`), botnet `.+bot` and `.link`, userfile sharing, `/msg` commands other than `status` and `reset`, scripts, modules beyond those the config loads, halfop, and the `+k`, `+d` and `+q` flags.
 
 ## Operating
 
@@ -93,7 +113,7 @@ The roster script (`config/eggdrop.tcl`) is applied to running bots in place, bu
 
 With `bitch` the bots deop anyone opped without being listed, unless a bot or the owner opped them. With `revenge` they punish whoever deops or kicks a listed op: deop, remove the handle's ops, kick, and ban for 120 minutes. A deopped listed op is re-opped either way.
 
-The bots are masters and friends everywhere, and the owner in the channels that list it, so revenge spares them there and a bot never undoes the owner's ops or deops. The owner's trust follows its mask: anyone matching it is the owner. Other users hold only `+ao`.
+The bots are masters and friends everywhere, and the owner in the channels that list it, so revenge spares them there and a bot never undoes the owner's ops or deops. The owner's trust follows its mask: anyone matching it is the owner. Other users hold only `+ao` or `+gv`. A voice that a non-master devoices is voiced again, and revenge does not cover voices.
 
 A mask that matches a stranger can get a real user punished. Message `reset` to each bot from the owner: it reloads the roster, which restores ops, and lifts the bans in the bot's list. A roster change or an instance replacement does the same. Unlifted bans expire after 120 minutes.
 
@@ -151,7 +171,7 @@ sh scripts/tests/run.sh
 pre-commit run --all-files
 ```
 
-Unit tests cannot start a bot. Before a release, build Eggdrop on Amazon Linux 2023, point the rendered config at a throwaway IRC server, and check that it joins, ops a listed mask only in the channels that list it, ignores a stranger, ignores a non-owner's `status`, publishes `SiteUp` and answers `status`.
+Unit tests cannot start a bot. Before a release, build Eggdrop on Amazon Linux 2023, point the rendered config at a throwaway IRC server, and check that it joins, ops or voices a listed mask only in the channels that list it, ignores a stranger, ignores a non-owner's `status`, publishes `SiteUp` and answers `status`.
 
 ## Limits
 

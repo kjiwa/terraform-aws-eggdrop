@@ -359,6 +359,61 @@ run "channel_ops_may_be_omitted" {
   }
 }
 
+run "channel_voices_must_be_users" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    channels = { "#example" = { voices = ["mallory"] } }
+  }
+
+  expect_failures = [var.channels]
+}
+
+run "channel_handle_cannot_be_op_and_voice" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    channels = { "#example" = { ops = ["alice"], voices = ["alice"] } }
+  }
+
+  expect_failures = [var.channels]
+}
+
+run "owner_cannot_be_only_a_voice" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    channels = { "#example" = { ops = [], voices = ["alice"] } }
+  }
+
+  expect_failures = [var.channels]
+}
+
+run "channel_voices_may_be_omitted" {
+  command = plan
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  variables {
+    channels = { "#example" = { ops = ["alice"] } }
+  }
+
+  assert {
+    condition     = output.asg_name == "eggdrop"
+    error_message = "A channel with no voices entry must plan: the bot voices nobody."
+  }
+}
+
 run "bots_are_at_most_ten" {
   command = plan
   providers = {

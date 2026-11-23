@@ -46,6 +46,12 @@ locals {
     ]
   ])
 
+  channel_voices = flatten([
+    for channel, settings in var.channels : [
+      for handle in settings.voices : { channel = channel, handle = handle }
+    ]
+  ])
+
   # Address only: only bots run in these subnets, and a claimed nick never
   # matches the ident fixed at connect.
   peer_masks = [for cidr in var.subnet_ipv6_cidr_blocks : "*!*@${trimsuffix(cidr, "::/64")}:*"]
@@ -78,6 +84,7 @@ locals {
       domain_name      = var.domain_name
       channels         = var.channels
       channel_ops      = local.channel_ops
+      channel_voices   = local.channel_voices
       users            = var.users
       peer_masks       = local.peer_masks
       owner            = var.owner

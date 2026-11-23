@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.16.0
+
+Upgrading: roster-only. The plan changes `config/eggdrop.tcl` and no launch template or instance; the running bots reload in place within a minute.
+
+### Added
+
+- `voices` on each `channels` entry (default empty): the handles in `users` the bot voices on join in that channel. A voice has `|+gv`, so a devoice by a non-master is reversed. A handle cannot be in both a channel's `ops` and `voices`.
+- A README section, "Coming from eggdrop.conf", that maps Eggdrop's own settings to the inputs.
+
+### Changed
+
+- The sweep after a roster load also voices listed voices who are not voiced yet, as it ops listed ops.
+
 ## v0.15.1
 
 Upgrading: roster-only. The plan changes `config/eggdrop.tcl` and no launch template or instance; the running bots reload in place within a minute.
